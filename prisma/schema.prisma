@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id            String         @id @db.VarChar(36)
+  name          String         @db.VarChar(100)
+  status        Int            @default(1)
+  created_at    BigInt
+  updated_at    BigInt
+  apps          App[]
+  itemTemplates ItemTemplate[]
+  users         User[]
+
+  @@map("merchants")
+}
+
+model App {
+  id            String         @id @db.VarChar(36)
+  merchant_id   String         @db.VarChar(36)
+  name          String         @db.VarChar(100)
+  status        Int            @default(1)
+  created_at    BigInt
+  updated_at    BigInt
+  merchant      Merchant       @relation(fields: [merchant_id], references: [id], onDelete: Cascade)
+  itemTemplates ItemTemplate[]
+
+  @@unique([merchant_id, name])
+  @@index([merchant_id], map: "apps_merchant_id_fkey")
+  @@map("apps")
+}
+
+model ItemTemplate {
+  id              String        @id @db.VarChar(30)
+  merchant_id     String        @db.VarChar(36)
+  app_id          String        @db.VarChar(36)
+  item_type       String        @db.VarChar(30)
+  item_name       String        @db.VarChar(30)
+  item_icon       String?       @db.VarChar(255)
+  eff_arg         String        @db.Text
+  is_active       ItemStatus    @default(ACTIVE)
+  status          ItemLifecycle @default(NORMAL)
+  expire_duration Int?
+  expire_date     BigInt?
+  limit_max       Int?
+  daily_limit_max Int?
+  total_limit     Int?
+  custom          String?       @db.Text
+  created_at      BigInt
+  updated_at      BigInt
+  app             App           @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  merchant        Merchant      @relation(fields: [merchant_id], references: [id], onDelete: Cascade)
+
+  @@unique([merchant_id, id])
+  @@index([app_id], map: "item_templates_app_id_fkey")
+  @@index([merchant_id], map: "item_templates_merchant_id_fkey")
+  @@map("item_templates")
+}
+
+
+
+model ShardingMetadata {
+  id          String         @id @db.VarChar(36)
+  table_type  TableType
+  merchant_id String         @db.VarChar(36)
+  table_name  String         @unique @db.VarChar(100)
+  time_range  String         @db.VarChar(20)
+  status      ShardingStatus @default(ACTIVE)
+  created_at  BigInt
+  updated_at  BigInt
+
+  @@map("sharding_metadata")
+}
+
+model SuperAdmin {
+  id         String @id @db.VarChar(36)
+  created_at BigInt
+  updated_at BigInt
+  user       User?
+
+  @@map("super_admins")
+}
+
+model Permission {
+  id              String           @id @db.VarChar(36)
+  name            String           @unique @db.VarChar(100)
+  description     String?          @db.VarChar(255)
+  resource        String           @db.VarChar(100)
+  action          String           @db.VarChar(50)
+  created_at      BigInt
+  updated_at      BigInt
+  userPermissions UserPermission[]
+
+  @@map("permissions")
+}
+
+model UserPermission {
+  id            String     @id @db.VarChar(36)
+  user_id       String     @db.VarChar(36)
+  permission_id String     @db.VarChar(36)
+  created_at    BigInt
+  permission    Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  user          User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, permission_id])
+  @@index([user_id], map: "user_permissions_user_id_fkey")
+  @@index([permission_id], map: "user_permissions_permission_id_fkey")
+  @@map("user_permissions")
+}
+
+model User {
+  id              String           @id @db.VarChar(36)
+  username        String           @unique @db.VarChar(100)
+  password        String           @db.VarChar(255)
+  user_type       UserType
+  merchant_id     String?          @db.VarChar(36)
+  super_admin_id  String?          @unique @db.VarChar(36)
+  status          Int              @default(1)
+  created_at      BigInt
+  updated_at      BigInt
+  userPermissions UserPermission[]
+  merchant        Merchant?        @relation(fields: [merchant_id], references: [id], onDelete: Cascade)
+  superAdmin      SuperAdmin?      @relation(fields: [super_admin_id], references: [id])
+
+  @@index([merchant_id], map: "users_merchant_id_fkey")
+  @@map("users")
+}
+
+enum Role {
+  SUPER_ADMIN
+  MERCHANT_OWNER
+}
+
+enum ItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ItemLifecycle {
+  NORMAL
+  EXPIRED
+  PENDING_DELETE
+  DELETED
+}
+
+enum TableType {
+  PLAYER_ITEMS
+  ITEM_RECORDS
+  ITEM_LIMITS
+}
+
+enum ShardingStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum UserType {
+  SUPER_ADMIN
+  MERCHANT_OWNER
+}
