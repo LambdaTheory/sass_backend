@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../types';
 import { validateTokenAndGetUserInfo } from '../services/auth.service';
+import { sendUnauthorized, sendInternalError } from '../utils/response';
 
 /**
  * 登录验证中间件
@@ -17,12 +18,7 @@ export const authMiddleware = async (
     const result = await validateTokenAndGetUserInfo(req.headers.authorization);
     
     if (!result.success) {
-      res.status(result.error!.code).json({
-        code: result.error!.code,
-        message: result.error!.message,
-        data: null
-      });
-      return;
+      return sendUnauthorized(res, result.error!.message);
     }
 
     // 使用Object.freeze保护用户信息不被外部修改
@@ -37,11 +33,7 @@ export const authMiddleware = async (
     next();
   } catch (error) {
     console.error('认证中间件错误:', error);
-    res.status(500).json({
-      code: 500,
-      message: '认证过程中发生错误',
-      data: null
-    });
+    return sendInternalError(res, '认证过程中发生错误');
   }
 };
 

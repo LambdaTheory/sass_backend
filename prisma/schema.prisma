@@ -11,6 +11,9 @@ model Merchant {
   id            String         @id @db.VarChar(36)
   name          String         @db.VarChar(100)
   status        Int            @default(1)
+  hmac_key      String?        @db.VarChar(64)
+  key_created_at BigInt?
+  key_status    Int            @default(1)
   created_at    BigInt
   updated_at    BigInt
   apps          App[]
@@ -68,12 +71,14 @@ model ShardingMetadata {
   id          String         @id @db.VarChar(36)
   table_type  TableType
   merchant_id String         @db.VarChar(36)
+  app_id      String         @db.VarChar(36)
   table_name  String         @unique @db.VarChar(100)
   time_range  String         @db.VarChar(20)
   status      ShardingStatus @default(ACTIVE)
   created_at  BigInt
   updated_at  BigInt
 
+  @@index([app_id])
   @@map("sharding_metadata")
 }
 
@@ -131,6 +136,8 @@ model User {
   @@map("users")
 }
 
+
+
 enum Role {
   SUPER_ADMIN
   MERCHANT_OWNER
@@ -163,4 +170,15 @@ enum ShardingStatus {
 enum UserType {
   SUPER_ADMIN
   MERCHANT_OWNER
+}
+
+enum PlayerItemStatus {
+  USABLE
+  UNUSABLE
+}
+
+enum ItemRecordType {
+  GRANT
+  CONSUME
+  EXPIRE
 }

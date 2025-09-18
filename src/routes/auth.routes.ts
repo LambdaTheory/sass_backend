@@ -8,6 +8,10 @@ import {
   badRequest,
   unauthorized,
   internalError,
+  sendSuccess,
+  sendBadRequest,
+  sendUnauthorized,
+  sendInternalError,
 } from "../utils/response";
 import { authMiddleware } from "../middleware";
 import { validateToken } from "../services/auth.service";
@@ -35,17 +39,13 @@ router.post(
 
       // 输入验证
       if (!username || !password) {
-        const errorResponse = badRequest("用户名和密码不能为空");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendBadRequest(res, "用户名和密码不能为空");
       }
 
       // 清理和验证用户名
       const cleanUsername = username.toString().trim();
       if (cleanUsername.length < 3 || cleanUsername.length > 100) {
-        const errorResponse = badRequest("用户名长度必须在3-100个字符之间");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendBadRequest(res, "用户名长度必须在3-100个字符之间");
       }
 
       // 用户名格式验证（支持传统用户名和邮箱格式）
@@ -56,18 +56,12 @@ router.post(
         !emailRegex.test(cleanUsername) &&
         !usernameRegex.test(cleanUsername)
       ) {
-        const errorResponse = badRequest(
-          "用户名格式不正确，请使用有效的用户名或邮箱地址"
-        );
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendBadRequest(res, "用户名格式不正确，请使用有效的用户名或邮箱地址");
       }
 
       // 密码长度验证
       if (password.length < 6 || password.length > 128) {
-        const errorResponse = badRequest("密码长度必须在6-128个字符之间");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendBadRequest(res, "密码长度必须在6-128个字符之间");
       }
 
       // 查找用户
@@ -76,17 +70,13 @@ router.post(
       });
 
       if (!user || user.status !== 1) {
-        const errorResponse = unauthorized("商户已被禁用");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendUnauthorized(res, "商户已被禁用");
       }
 
       // 验证密码（现在密码统一存储在User表中）
       const isPasswordValid = await bcrypt.compare(password, user.password);
       if (!isPasswordValid) {
-        const errorResponse = unauthorized("用户名或密码错误");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendUnauthorized(res, "用户名或密码错误");
       }
 
       // 根据用户类型获取角色和商户信息
@@ -96,17 +86,13 @@ router.post(
       if (user.user_type === "SUPER_ADMIN") {
         // 验证超管记录是否存在且有效
         if (!user.super_admin_id) {
-          const errorResponse = unauthorized("用户名或密码错误");
-          res.status(errorResponse.code).json(errorResponse);
-          return;
+          return sendUnauthorized(res, "用户名或密码错误");
         }
         const superAdmin = await prisma.superAdmin.findUnique({
           where: { id: user.super_admin_id },
         });
         if (!superAdmin) {
-          const errorResponse = unauthorized("用户名或密码错误");
-          res.status(errorResponse.code).json(errorResponse);
-          return;
+          return sendUnauthorized(res, "用户名或密码错误");
         }
         userRole = "SUPER_ADMIN";
       } else if (user.user_type === "MERCHANT_OWNER") {
@@ -116,30 +102,22 @@ router.post(
             where: { id: user.merchant_id },
           });
           if (!merchant || merchant.status !== 1) {
-            const errorResponse = unauthorized("商户已被禁用");
-            res.status(errorResponse.code).json(errorResponse);
-            return;
+            return sendUnauthorized(res, "商户已被禁用");
           }
           userRole = "MERCHANT_OWNER";
           merchantId = merchant.id;
         } else {
-          const errorResponse = unauthorized("用户名或密码错误");
-          res.status(errorResponse.code).json(errorResponse);
-          return;
+          return sendUnauthorized(res, "用户名或密码错误");
         }
       } else {
-        const errorResponse = unauthorized("用户名或密码错误");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendUnauthorized(res, "用户名或密码错误");
       }
 
       // 生成JWT token
       const jwtSecret = process.env.JWT_SECRET;
       if (!jwtSecret) {
         console.error("JWT_SECRET 环境变量未设置");
-        const errorResponse = internalError("服务器配置错误");
-        res.status(errorResponse.code).json(errorResponse);
-        return;
+        return sendInternalError(res, "服务器配置错误");
       }
 
       const payload: JWTPayload = {
@@ -152,23 +130,17 @@ router.post(
 
       const token = jwt.sign(payload, jwtSecret, { expiresIn: "24h" });
 
-      res.json(
-        success(
-          {
-            token,
-            user: {
-              id: user.id,
-              username: user.username,
-              merchantId,
-            },
-          },
-          "登录成功"
-        )
-      );
+      sendSuccess(res, {
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          merchantId,
+        },
+      }, "登录成功");
     } catch (error) {
       console.error("登录错误:", error);
-      const errorResponse = internalError("登录过程中发生错误");
-      res.status(errorResponse.code).json(errorResponse);
+      sendInternalError(res, "登录过程中发生错误");
     }
   }
 );
@@ -183,35 +155,24 @@ router.get("/verify", async (req: Request, res: Response) => {
     const result = await validateToken(req.headers.authorization);
     
     if (!result.success) {
-      const errorResponse = {
-        code: result.error!.code,
-        message: result.error!.message,
-        data: null
-      };
-      res.status(errorResponse.code).json(errorResponse);
-      return;
+      return sendUnauthorized(res, result.error!.message);
     }
 
     // 返回验证成功的响应
-    res.json(
-      success(
-        {
-          valid: true,
-          user: {
-            id: result.decoded!.userId,
-            username: result.decoded!.username,
-            userType: result.decoded!.userType,
-            role: result.decoded!.role,
-            merchantId: result.decoded!.merchantId,
-          },
-        },
-        "token验证成功"
-      )
-    );
+    sendSuccess(res, {
+      valid: true,
+      user: {
+        id: result.decoded!.userId,
+        username: result.decoded!.username,
+        userType: result.decoded!.userType,
+        role: result.decoded!.role,
+        merchantId: result.decoded!.merchantId,
+        merchantName: result.merchant?.name,
+      },
+    }, "token验证成功");
   } catch (error) {
     console.error("token验证错误:", error);
-    const errorResponse = internalError("验证过程中发生错误");
-    res.status(errorResponse.code).json(errorResponse);
+    sendInternalError(res, "验证过程中发生错误");
   }
 });
 
@@ -236,14 +197,13 @@ router.post(
         isVaild = isRoleValid || isIncluedPermission;
       }
       if (isVaild) {
-        res.json(success(null, "权限验证成功"));
+        sendSuccess(res, null, "权限验证成功");
       } else {
-        res.json(unauthorized("权限验证失败"));
+        sendUnauthorized(res, "权限验证失败");
       }
     } catch (error) {
       console.error("验证权限错误:", error);
-      const errorResponse = internalError("验证过程中发生错误");
-      res.status(errorResponse.code).json(errorResponse);
+      sendInternalError(res, "验证过程中发生错误");
     }
   }
 );
@@ -255,7 +215,7 @@ router.post(
 router.post("/logout", (req: Request, res: Response) => {
   // 由于JWT是无状态的，服务端登出主要是告知客户端清理token
   // 如果需要实现token黑名单，可以在这里添加相关逻辑
-  res.json(success(null, "登出成功"));
+  sendSuccess(res, null, "登出成功");
 });
 
 export default router;

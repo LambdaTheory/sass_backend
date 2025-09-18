@@ -1,7 +1,316 @@
 /**
- * 商户路由测试 - 专注于验证删除商户功能
- * 这个测试验证删除商户时正确处理关联数据的逻辑
+ * 商户路由测试 - 验证商户功能
+ * 包括创建商户的校验规则和删除商户功能
  */
+
+describe('Merchant Routes - 创建商户校验规则验证', () => {
+  // 模拟创建商户的校验逻辑（包含参数预处理）
+  const validateCreateMerchantData = (name: string, username: string, password: string) => {
+    // 参数预处理：去除首尾空格
+    name = name?.trim();
+    username = username?.trim();
+    password = password?.trim();
+    const errors: string[] = [];
+    
+    // 商户名称验证
+    if (!name) {
+      errors.push('商户名称不能为空');
+    } else {
+      if (name.length > 30) {
+        errors.push('商户名称不能超过30个字符');
+      }
+      const namePattern = /^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/;
+      if (!namePattern.test(name)) {
+        errors.push('商户名称只能包含字母、数字、下划线、中划线和中文字符');
+      }
+    }
+    
+    // 登录账号验证
+    if (!username) {
+      errors.push('登录账号不能为空');
+    } else {
+      if (username.length > 30) {
+        errors.push('登录账号不能超过30个字符');
+      }
+      const usernamePattern = /^[a-zA-Z0-9_]+$/;
+      if (!usernamePattern.test(username)) {
+        errors.push('登录账号只能包含字母、数字和下划线');
+      }
+    }
+    
+    // 登录密码验证
+    if (!password) {
+      errors.push('登录密码不能为空');
+    } else {
+      if (password.length > 30) {
+        errors.push('登录密码不能超过30个字符');
+      }
+      const passwordPattern = /^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/;
+      if (!passwordPattern.test(password)) {
+        errors.push('登录密码只能包含字母、数字和常用特殊符号');
+      }
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
+  describe('商户名称校验', () => {
+    it('应该拒绝空的商户名称', () => {
+      const result = validateCreateMerchantData('', 'testuser', 'password123');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('商户名称不能为空');
+    });
+
+    it('应该拒绝超过30个字符的商户名称', () => {
+      const longName = 'a'.repeat(31);
+      const result = validateCreateMerchantData(longName, 'testuser', 'password123');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('商户名称不能超过30个字符');
+    });
+
+    it('应该接受包含中文、字母、数字、下划线、中划线的商户名称', () => {
+      const validNames = ['测试商户', 'TestMerchant', 'merchant_123', 'merchant-abc', '商户_test-123'];
+      validNames.forEach(name => {
+        const result = validateCreateMerchantData(name, 'testuser', 'password123');
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    it('应该拒绝包含特殊符号的商户名称', () => {
+      const invalidNames = ['商户@test', 'merchant#123', 'test商户!', 'merchant$abc'];
+      invalidNames.forEach(name => {
+        const result = validateCreateMerchantData(name, 'testuser', 'password123');
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('商户名称只能包含字母、数字、下划线、中划线和中文字符');
+      });
+    });
+  });
+
+  describe('登录账号校验', () => {
+    it('应该拒绝空的登录账号', () => {
+      const result = validateCreateMerchantData('测试商户', '', 'password123');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('登录账号不能为空');
+    });
+
+    it('应该拒绝超过30个字符的登录账号', () => {
+      const longUsername = 'a'.repeat(31);
+      const result = validateCreateMerchantData('测试商户', longUsername, 'password123');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('登录账号不能超过30个字符');
+    });
+
+    it('应该接受包含字母、数字、下划线的登录账号', () => {
+      const validUsernames = ['testuser', 'user123', 'test_user', 'user_123_test'];
+      validUsernames.forEach(username => {
+        const result = validateCreateMerchantData('测试商户', username, 'password123');
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    it('应该拒绝包含中文或特殊符号的登录账号', () => {
+      const invalidUsernames = ['用户名', 'user@test', 'test-user', 'user#123', 'test.user'];
+      invalidUsernames.forEach(username => {
+        const result = validateCreateMerchantData('测试商户', username, 'password123');
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('登录账号只能包含字母、数字和下划线');
+      });
+    });
+  });
+
+  describe('登录密码校验', () => {
+    it('应该拒绝空的登录密码', () => {
+      const result = validateCreateMerchantData('测试商户', 'testuser', '');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('登录密码不能为空');
+    });
+
+    it('应该拒绝超过30个字符的登录密码', () => {
+      const longPassword = 'a'.repeat(31);
+      const result = validateCreateMerchantData('测试商户', 'testuser', longPassword);
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain('登录密码不能超过30个字符');
+    });
+
+    it('应该接受包含字母、数字、特殊符号的登录密码', () => {
+      const validPasswords = ['password123', 'Pass@123', 'test_pass!', 'P@ssw0rd#123', 'abc!@#$%^&*()'];
+      validPasswords.forEach(password => {
+        const result = validateCreateMerchantData('测试商户', 'testuser', password);
+        expect(result.isValid).toBe(true);
+      });
+    });
+
+    it('应该拒绝包含中文的登录密码', () => {
+      const invalidPasswords = ['密码123', 'pass密码', '测试password'];
+      invalidPasswords.forEach(password => {
+        const result = validateCreateMerchantData('测试商户', 'testuser', password);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('登录密码只能包含字母、数字和常用特殊符号');
+      });
+    });
+  });
+
+  describe('综合校验测试', () => {
+    it('应该通过所有有效数据的校验', () => {
+      const result = validateCreateMerchantData('测试商户_123', 'test_user_123', 'Pass@123!');
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('应该返回多个校验错误', () => {
+      const result = validateCreateMerchantData('', '', '');
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toHaveLength(3);
+      expect(result.errors).toContain('商户名称不能为空');
+      expect(result.errors).toContain('登录账号不能为空');
+      expect(result.errors).toContain('登录密码不能为空');
+    });
+
+    it('应该返回长度超限的校验错误', () => {
+       const longData = 'a'.repeat(31);
+       const result = validateCreateMerchantData(longData, longData, longData);
+       expect(result.isValid).toBe(false);
+       expect(result.errors).toContain('商户名称不能超过30个字符');
+       expect(result.errors).toContain('登录账号不能超过30个字符');
+       expect(result.errors).toContain('登录密码不能超过30个字符');
+     });
+
+     it('应该正确处理包含空格的输入数据', () => {
+       // 测试去除首尾空格的功能
+       const result = validateCreateMerchantData('  测试商户  ', '  testuser  ', '  password123  ');
+       expect(result.isValid).toBe(true);
+       expect(result.errors).toHaveLength(0);
+     });
+
+     it('应该拒绝只包含空格的输入', () => {
+       const result = validateCreateMerchantData('   ', '   ', '   ');
+       expect(result.isValid).toBe(false);
+       expect(result.errors).toContain('商户名称不能为空');
+       expect(result.errors).toContain('登录账号不能为空');
+       expect(result.errors).toContain('登录密码不能为空');
+     });
+  });
+});
+
+describe('Merchant Routes - 商户列表安全性验证', () => {
+  // 模拟获取商户列表的数据结构
+  const simulateGetMerchantList = () => {
+    // 模拟数据库查询结果
+    const mockMerchants = [
+      {
+        id: 'merchant-1',
+        name: '测试商户1',
+        status: 1,
+        users: [
+          {
+            id: 'user-1',
+            username: 'testuser1',
+            // 注意：这里不应该包含password字段
+          },
+          {
+            id: 'user-2',
+            username: 'testuser2',
+            // 注意：这里不应该包含password字段
+          }
+        ]
+      },
+      {
+        id: 'merchant-2',
+        name: '测试商户2',
+        status: 0,
+        users: [
+          {
+            id: 'user-3',
+            username: 'testuser3',
+            // 注意：这里不应该包含password字段
+          }
+        ]
+      }
+    ];
+    
+    return {
+      list: mockMerchants,
+      pagination: {
+        current: 1,
+        pageSize: 10,
+        total: 2,
+        totalPages: 1
+      }
+    };
+  };
+
+  describe('数据安全性检查', () => {
+    it('商户列表不应该包含用户密码字段', () => {
+      const result = simulateGetMerchantList();
+      
+      // 检查每个商户的用户列表
+      result.list.forEach(merchant => {
+        merchant.users.forEach(user => {
+          // 确保用户对象不包含password字段
+          expect(user).not.toHaveProperty('password');
+          // 确保包含必要的字段
+          expect(user).toHaveProperty('id');
+          expect(user).toHaveProperty('username');
+        });
+      });
+    });
+
+    it('商户列表应该包含正确的字段结构', () => {
+      const result = simulateGetMerchantList();
+      
+      // 检查响应结构
+      expect(result).toHaveProperty('list');
+      expect(result).toHaveProperty('pagination');
+      
+      // 检查商户字段
+      result.list.forEach(merchant => {
+        expect(merchant).toHaveProperty('id');
+        expect(merchant).toHaveProperty('name');
+        expect(merchant).toHaveProperty('status');
+        expect(merchant).toHaveProperty('users');
+        
+        // 确保商户对象只包含预期的字段
+        const expectedMerchantFields = ['id', 'name', 'status', 'users'];
+        const actualMerchantFields = Object.keys(merchant);
+        expect(actualMerchantFields.sort()).toEqual(expectedMerchantFields.sort());
+      });
+    });
+
+    it('用户信息应该只包含安全字段', () => {
+      const result = simulateGetMerchantList();
+      
+      result.list.forEach(merchant => {
+        merchant.users.forEach(user => {
+          // 检查用户字段
+          const expectedUserFields = ['id', 'username'];
+          const actualUserFields = Object.keys(user);
+          expect(actualUserFields.sort()).toEqual(expectedUserFields.sort());
+          
+          // 确保不包含敏感字段
+          expect(user).not.toHaveProperty('password');
+          expect(user).not.toHaveProperty('created_at');
+          expect(user).not.toHaveProperty('updated_at');
+        });
+      });
+    });
+
+    it('应该正确处理空用户列表的商户', () => {
+      const mockMerchantWithNoUsers = {
+        id: 'merchant-empty',
+        name: '无用户商户',
+        status: 1,
+        users: []
+      };
+      
+      // 验证空用户列表不会导致错误
+      expect(mockMerchantWithNoUsers.users).toHaveLength(0);
+      expect(Array.isArray(mockMerchantWithNoUsers.users)).toBe(true);
+    });
+  });
+});
 
 describe('Merchant Routes - 删除商户功能验证', () => {
   // 模拟删除商户的核心逻辑

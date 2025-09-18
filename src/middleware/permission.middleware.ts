@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest, PermissionCheckOptions } from '../types';
-import { unauthorized, forbidden, badRequest } from '../utils/response';
+import { unauthorized, forbidden, badRequest, sendUnauthorized, sendForbidden, sendBadRequest } from '../utils/response';
 
 /**
  * 权限校验中间件工厂函数
@@ -12,8 +12,7 @@ export const requirePermission = (options: PermissionCheckOptions | PermissionCh
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     // 检查用户是否已登录
     if (!req.user) {
-      const errorResponse = unauthorized('用户未登录');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户未登录');
       return;
     }
 
@@ -21,8 +20,7 @@ export const requirePermission = (options: PermissionCheckOptions | PermissionCh
     
     // 检查用户是否被禁用
     if (user.status !== 1) {
-      const errorResponse = unauthorized('用户已被禁用');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户已被禁用');
       return;
     }
     
@@ -38,11 +36,10 @@ export const requirePermission = (options: PermissionCheckOptions | PermissionCh
     if (!Array.isArray(options)) {
       const requiredPermission = `${options.resource}_${options.action}`;
       if (!userPermissions.includes(requiredPermission)) {
-        const errorResponse = forbidden('权限不足', {
+        sendForbidden(res, '权限不足', {
           required: requiredPermission,
           message: `需要 ${options.resource} 的 ${options.action} 权限`
         });
-        res.status(errorResponse.code).json(errorResponse);
         return;
       }
       next();
@@ -57,23 +54,21 @@ export const requirePermission = (options: PermissionCheckOptions | PermissionCh
       // 需要所有权限都满足
       const missingPermissions = requiredPermissions.filter(perm => !userPermissions.includes(perm));
       if (missingPermissions.length > 0) {
-        const errorResponse = forbidden('权限不足', {
+        sendForbidden(res, '权限不足', {
           required: requiredPermissions,
           missing: missingPermissions,
           message: '需要所有指定权限'
         });
-        res.status(errorResponse.code).json(errorResponse);
         return;
       }
     } else {
       // 只需要满足其中一个权限
       const hasAnyPermission = requiredPermissions.some(perm => userPermissions.includes(perm));
       if (!hasAnyPermission) {
-        const errorResponse = forbidden('权限不足', {
+        sendForbidden(res, '权限不足', {
           required: requiredPermissions,
           message: '需要至少一个指定权限'
         });
-        res.status(errorResponse.code).json(errorResponse);
         return;
       }
     }
@@ -91,34 +86,30 @@ export const requirePermission = (options: PermissionCheckOptions | PermissionCh
 export const requireRole = (allowedRoles: string | string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      const errorResponse = unauthorized('用户未登录');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户未登录');
       return;
     }
 
     // 检查用户是否被禁用
     if (req.user.status !== 1) {
-      const errorResponse = unauthorized('用户已被禁用');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户已被禁用');
       return;
     }
 
     const userRole = req.user.role;
     if (!userRole) {
-      const errorResponse = forbidden('用户角色未定义');
-      res.status(errorResponse.code).json(errorResponse);
+      sendForbidden(res, '用户角色未定义');
       return;
     }
 
     const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
     
     if (!roles.includes(userRole)) {
-      const errorResponse = forbidden('角色权限不足', {
+      sendForbidden(res, '角色权限不足', {
         required: roles,
         current: userRole,
         message: `需要以下角色之一: ${roles.join(', ')}`
       });
-      res.status(errorResponse.code).json(errorResponse);
       return;
     }
 
@@ -137,15 +128,13 @@ export const requireMerchantAccess = (
 ) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
-      const errorResponse = unauthorized('用户未登录');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户未登录');
       return;
     }
 
     // 检查用户是否被禁用
     if (req.user.status !== 1) {
-      const errorResponse = unauthorized('用户已被禁用');
-      res.status(errorResponse.code).json(errorResponse);
+      sendUnauthorized(res, '用户已被禁用');
       return;
     }
 
@@ -159,22 +148,19 @@ export const requireMerchantAccess = (
     const userMerchantId = req.user.merchant_id;
 
     if (!userMerchantId) {
-      const errorResponse = forbidden('用户未关联任何商户');
-      res.status(errorResponse.code).json(errorResponse);
+      sendForbidden(res, '用户未关联任何商户');
       return;
     }
 
     if (!requestMerchantId) {
-      const errorResponse = badRequest('请求中缺少商户ID');
-      res.status(errorResponse.code).json(errorResponse);
+      sendBadRequest(res, '请求中缺少商户ID');
       return;
     }
 
     if (requestMerchantId !== userMerchantId) {
-      const errorResponse = forbidden('无权访问其他商户的资源', {
+      sendForbidden(res, '无权访问其他商户的资源', {
         message: '只能访问自己商户的资源'
       });
-      res.status(errorResponse.code).json(errorResponse);
       return;
     }
 
