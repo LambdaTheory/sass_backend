@@ -17,6 +17,7 @@ RUN apk add --no-cache \
     python3 \
     make \
     g++ \
+    linux-headers \
     && update-ca-certificates
 
 # 安装 pnpm 和 PM2
@@ -32,8 +33,9 @@ COPY package*.json pnpm-lock.yaml ./
 # 安装依赖（包含开发依赖，用于ts-node）
 RUN pnpm install --frozen-lockfile
 
-# 重新构建bcrypt原生模块
+# 重新构建bcrypt和其他原生模块
 RUN pnpm rebuild bcrypt
+RUN npm rebuild bcrypt --build-from-source
 
 # 复制应用代码
 COPY . .
@@ -52,10 +54,12 @@ RUN mkdir -p /app/logs
 
 # 复制启动脚本
 COPY docker/start.sh /start.sh
+COPY docker/start-node.sh /start-node.sh
 RUN chmod +x /start.sh
+RUN chmod +x /start-node.sh
 
 # 暴露端口
 EXPOSE 3389
 
-# 使用启动脚本
-CMD ["/start.sh"]
+# 默认使用PM2启动脚本，可以通过环境变量USE_NODE=true来使用node直接启动
+CMD ["sh", "-c", "if [ \"$USE_NODE\" = \"true\" ]; then /start-node.sh; else /start.sh; fi"]

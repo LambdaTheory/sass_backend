@@ -1,7 +1,7 @@
 {
-  "version": "1.0.27",
-  "description": "优化道具消费逻辑：支持通过player_item_id精确定位道具记录，恢复行锁机制确保并发安全",
-  "lastUpdated": "2025年09月18日",
+  "version": "1.0.28",
+  "description": "修复Docker部署中bcrypt模块兼容性问题，添加多种启动方式支持",
+  "lastUpdated": "2025年09月19日",
   "features": [
     "用户认证与权限管理",
     "商户管理",
