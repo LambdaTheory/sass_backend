@@ -1,12 +1,12 @@
 {
-  "version": "v1.0.31",
-  "description": "优化Docker构建，使用多阶段构建避免宿主机依赖问题",
-  "date": "2025-09-19 12:08:05",
+  "version": "v1.0.32",
+  "description": "修复Docker cron容器TypeScript编译问题",
+  "date": "2025-09-19 12:23:42",
   "changes": [
-    "重构Dockerfile使用多阶段构建(builder + runner)",
-    "分离构建环境和运行环境，避免宿主机node_modules冲突",
-    "优化镜像大小，运行镜像不包含构建工具",
-    "确保.dockerignore正确排除node_modules和dist",
-    "提升Docker部署的稳定性和可靠性"
+    "修复Dockerfile.cron中缺少TypeScript构建步骤的问题",
+    "更新tsconfig.json包含scripts目录编译",
+    "修改crontab使用编译后的JavaScript文件而非ts-node",
+    "确保定时任务脚本能在Docker容器中正常运行",
+    "解决'Cannot find module /app/dist/scripts/init-permissions.js'错误"
   ]
 }

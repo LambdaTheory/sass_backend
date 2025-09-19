@@ -16,6 +16,9 @@ RUN pnpm install --frozen-lockfile
 # 复制应用代码
 COPY . .
 
+# 构建TypeScript代码
+RUN pnpm run build
+
 # 复制crontab文件
 COPY docker/crontab /etc/cron.d/app-cron
 
