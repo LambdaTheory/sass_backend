@@ -43,12 +43,20 @@ generator client {
 ### Dockerfile 变更
 
 1. 添加系统库安装
-2. 设置环境变量 `OPENSSL_CONF` 和 `PRISMA_CLI_BINARY_TARGETS`
-3. 确保 CA 证书更新
+2. 设置环境变量 `OPENSSL_CONF`、`PRISMA_CLI_BINARY_TARGETS`、`PNPM_HOME` 和 `PATH`
+3. 启用 pnpm：`corepack enable`
+4. 将 `npm ci` 替换为 `pnpm install --frozen-lockfile`
+5. 将 `npm run build` 替换为 `pnpm run build`
+6. 将 `npx prisma generate` 替换为 `pnpm exec prisma generate`
+7. 确保 CA 证书更新
 
 ### Prisma Schema 变更
 
 1. 添加 `binaryTargets` 配置，支持 `native` 和 `linux-musl` 平台
+
+### 启动脚本变更
+
+1. 将 `npx prisma db push` 替换为 `pnpm exec prisma db push`
 
 ## 验证
 

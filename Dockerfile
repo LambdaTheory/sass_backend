@@ -35,7 +35,7 @@ COPY . .
 # 设置 Prisma 二进制目标为 linux-musl
 ENV PRISMA_CLI_BINARY_TARGETS=linux-musl
 RUN npx prisma generate
-RUN npx prisma db push --accept-data-loss
+# RUN npx prisma db push --accept-data-loss
 
 # 构建应用
 RUN pnpm run build
