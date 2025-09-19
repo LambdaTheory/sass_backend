@@ -45,7 +45,8 @@ ENV NODE_ENV=production
 RUN corepack enable
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN pnpm setup
+RUN mkdir -p $PNPM_HOME
+RUN pnpm config set global-bin-dir $PNPM_HOME
 RUN pnpm add -g pm2 prisma
 
 # 从构建阶段复制文件
