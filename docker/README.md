@@ -9,7 +9,7 @@
 1. **Dockerfile** - 主应用的 Docker 镜像
    - 基于 Node.js 18 Alpine
    - 包含完整的应用代码和依赖
-   - 暴露 3000 端口
+   - 暴露 3389 端口
 
 2. **docker/Dockerfile.cron** - 定时任务的 Docker 镜像
    - 基于 Node.js 18 Alpine
@@ -95,7 +95,7 @@ npm run init:admin
 ## 服务说明
 
 ### 主应用服务 (daojusaas-api)
-- **端口**: 3000
+- **端口**: 3389
 - **功能**: 提供 REST API 服务
 - **健康检查**: 依赖 MySQL 服务健康状态
 

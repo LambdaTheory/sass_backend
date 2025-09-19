@@ -44,6 +44,6 @@ echo "\n=== 服务启动日志 ==="
 docker-compose logs --tail=20
 
 echo "\n=== 部署完成 ==="
-echo "主应用地址: http://localhost:3000"
+echo "主应用地址: http://localhost:3389"
 echo "查看日志: docker-compose logs -f"
 echo "停止服务: docker-compose down"

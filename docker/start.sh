@@ -20,4 +20,5 @@ node -r ts-node/register scripts/init-admin.ts || echo "管理员初始化失败
 
 # 启动应用
 echo "启动应用..."
-exec npm start
+# 使用PM2启动应用
+pm2-runtime start ecosystem.config.js
