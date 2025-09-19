@@ -16,6 +16,9 @@ RUN pnpm install --frozen-lockfile
 # 复制应用代码
 COPY . .
 
+# 生成Prisma客户端
+RUN pnpm run db:generate
+
 # 构建TypeScript代码
 RUN pnpm run build
 

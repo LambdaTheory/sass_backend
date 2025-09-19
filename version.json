@@ -1,12 +1,12 @@
 {
-  "version": "v1.0.32",
-  "description": "修复Docker cron容器TypeScript编译问题",
-  "date": "2025-09-19 12:23:42",
+  "version": "v1.0.33",
+  "description": "修复Docker构建中Prisma客户端生成问题",
+  "date": "2025-09-19 13:31:44",
   "changes": [
-    "修复Dockerfile.cron中缺少TypeScript构建步骤的问题",
-    "更新tsconfig.json包含scripts目录编译",
-    "修改crontab使用编译后的JavaScript文件而非ts-node",
-    "确保定时任务脚本能在Docker容器中正常运行",
-    "解决'Cannot find module /app/dist/scripts/init-permissions.js'错误"
+    "在Dockerfile.cron中添加Prisma客户端生成步骤",
+    "修复TypeScript编译时PrismaClient类型缺失问题",
+    "确保Docker构建过程中正确生成@prisma/client类型",
+    "解决所有Prisma相关的TypeScript编译错误",
+    "完善Docker cron容器的构建流程"
   ]
 }
