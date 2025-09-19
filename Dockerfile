@@ -1,65 +1,39 @@
-FROM node:18-alpine
+FROM node:20-slim
 
-# 设置环境变量
-ENV OPENSSL_CONF=/etc/ssl/
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
-
-# 安装必要工具、OpenSSL和PM2
-# 安装 Prisma 所需的系统库和bcrypt编译依赖
-RUN apk add --no-cache \
-    netcat-openbsd \
-    openssl \
-    openssl-dev \
-    ca-certificates \
-    libc6-compat \
-    build-base \
-    python3 \
-    make \
-    g++ \
-    linux-headers \
-    && update-ca-certificates
-
-# 安装 pnpm 和 PM2
-RUN corepack enable
-RUN npm install -g pm2
-
-# 设置工作目录
 WORKDIR /app
 
-# 复制package文件
+# 安装运行期需要的工具（用于健康检查和数据库连接检查）
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends curl netcat-traditional \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Asia/Shanghai
+
+# 启用 pnpm
+RUN corepack enable
+
+# 仅复制包管理文件，优先利用缓存
 COPY package*.json pnpm-lock.yaml ./
 
-# 安装依赖（包含开发依赖，用于ts-node）
+# 安装依赖（包含 dev 依赖用于构建）
 RUN pnpm install --frozen-lockfile
 
-# 重新构建bcrypt和其他原生模块
-RUN pnpm rebuild bcrypt
-RUN npm rebuild bcrypt --build-from-source
-
-# 复制应用代码
-COPY . .
-
-# 生成Prisma客户端
-# 设置 Prisma 二进制目标为 linux-musl
-ENV PRISMA_CLI_BINARY_TARGETS=linux-musl
+# 复制 Prisma schema 并生成客户端
+COPY prisma ./prisma
 RUN npx prisma generate
-# RUN npx prisma db push --accept-data-loss
 
-# 构建应用
+# 复制其余源码并构建
+COPY . .
 RUN pnpm run build
 
-# 创建日志目录
-RUN mkdir -p /app/logs
+# 运行期：设置生产环境并安装运行所需全局工具
+ENV NODE_ENV=production
+RUN pnpm add -g pm2 prisma
 
-# 复制启动脚本
-COPY docker/start.sh /start.sh
-COPY docker/start-node.sh /start-node.sh
-RUN chmod +x /start.sh
-RUN chmod +x /start-node.sh
+# 入口脚本（执行迁移 → 启动 PM2）
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# 暴露端口
 EXPOSE 3389
 
-# 默认使用PM2启动脚本，可以通过环境变量USE_NODE=true来使用node直接启动
-CMD ["sh", "-c", "if [ \"$USE_NODE\" = \"true\" ]; then /start-node.sh; else /start.sh; fi"]
+ENTRYPOINT ["/entrypoint.sh"]

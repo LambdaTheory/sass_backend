@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# 等待数据库启动
+echo "等待数据库连接..."
+while ! nc -z mysql 3306; do
+  sleep 1
+done
+echo "数据库连接成功"
+
+# 推送数据库结构
+echo "推送数据库结构..."
+npx prisma db push --accept-data-loss
+
+# 执行初始化脚本
+echo "执行权限初始化..."
+node dist/scripts/init-permissions.js || echo "权限初始化失败或已存在"
+
+echo "执行管理员初始化..."
+node dist/scripts/init-admin.js || echo "管理员初始化失败或已存在"
+
+# 启动应用
+echo "启动应用..."
+pm2-runtime start ecosystem.config.js
