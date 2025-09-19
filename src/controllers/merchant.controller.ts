@@ -13,7 +13,7 @@ import {
   sendForbidden,
 } from "../utils/response";
 import { randomUUID } from "crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { AuthRequest } from "../types";
 import { AuthUtils } from "../utils/permission";
 import { MerchantKeyService } from "../services/merchant-key.service";

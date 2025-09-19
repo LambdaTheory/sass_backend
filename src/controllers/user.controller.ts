@@ -12,7 +12,7 @@ import {
   sendUnauthorized,
   sendForbidden
 } from "../utils/response";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { AuthRequest } from "../types";
 import { AuthUtils, PermissionChecker } from "../utils/permission";
 

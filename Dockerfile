@@ -17,8 +17,6 @@ COPY package.json pnpm-lock.yaml ./
 # 安装依赖（包含 dev 依赖用于构建）
 RUN pnpm install --frozen-lockfile
 
-# 修复 bcrypt 模块兼容性问题
-RUN pnpm rebuild bcrypt
 
 # 复制 Prisma schema 并生成客户端
 COPY prisma ./prisma
