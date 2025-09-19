@@ -25,6 +25,7 @@ Details: Error loading shared library libssl.so.1.1: No such file or directory
 - 安装必要的系统库：`openssl`、`openssl-dev`、`ca-certificates`、`libc6-compat`
 - 设置 OpenSSL 环境变量
 - 配置 Prisma 二进制目标为 `linux-musl`
+- **改用 pnpm 包管理器**：使用 `corepack enable` 启用 pnpm，并将所有 npm 命令替换为 pnpm
 
 ### 2. 修改 Prisma Schema
 

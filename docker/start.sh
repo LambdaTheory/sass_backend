@@ -9,7 +9,7 @@ echo "数据库连接成功"
 
 # 推送数据库结构
 echo "推送数据库结构..."
-npx prisma db push --accept-data-loss
+pnpm exec prisma db push --accept-data-loss
 
 # 执行初始化脚本
 echo "执行权限初始化..."
