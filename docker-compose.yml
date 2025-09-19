@@ -4,6 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      no_cache: true
     container_name: daojusaas-api
     ports:
       - "3389"
@@ -25,6 +26,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.cron
+      no_cache: true
     container_name: daojusaas-cron
     environment:
       - NODE_ENV=production
