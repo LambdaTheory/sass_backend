@@ -41,12 +41,12 @@ router.put(
  * 删除商户
  * DELETE /:merchantId
  */
-router.delete(
-  "/:merchantId",
-  authMiddleware,
-  requireRole(["SUPER_ADMIN"]),
-  MerchantController.deleteMerchant
-);
+// router.delete(
+//   "/:merchantId",
+//   authMiddleware,
+//   requireRole(["SUPER_ADMIN"]),
+//   MerchantController.deleteMerchant
+// );
 
 /**
  * 生成商户密钥对
