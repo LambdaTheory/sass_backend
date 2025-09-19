@@ -49,6 +49,7 @@ Thumbs.db
 # Docker
 Dockerfile
 !docker/
+!docker/start.sh
 docker-compose*.yml
 .dockerignore
 
