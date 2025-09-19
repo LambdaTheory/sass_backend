@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware, requireRole } from "../middleware";
 import { MerchantStatisticsController } from "../controllers/merchant-statistics.controller";
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 商户统计数据管理路由

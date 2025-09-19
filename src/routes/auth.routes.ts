@@ -25,7 +25,7 @@ declare global {
   }
 }
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 用户登录

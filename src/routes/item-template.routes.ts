@@ -3,7 +3,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permission.middleware';
 import { ItemTemplateController } from '../controllers/item-template.controller';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 获取道具模板列表

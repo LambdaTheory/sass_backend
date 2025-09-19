@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware, requireRole } from "../middleware";
 import { AppController } from "../controllers/app.controller";
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 创建应用

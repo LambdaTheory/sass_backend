@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { PlayerItemController } from '../controllers/player-item.controller';
 import { merchantAuthMiddleware, validateMerchantAppAccess, MerchantAuthRequest } from '../middleware/merchant-auth.middleware';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * C端商户专用的道具接口路由

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware, requireRole } from "../middleware";
 import { UserController } from "../controllers/user.controller";
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 修改用户密码

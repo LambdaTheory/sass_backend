@@ -4,7 +4,7 @@ import { requirePermissionAndMerchantAccess } from "../middleware/permission.mid
 import { PlayerItemController } from "../controllers/player-item.controller";
 import { AuthRequest } from "../types";
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * 获取用户背包道具列表

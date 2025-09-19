@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -8,7 +8,7 @@ import { internalError, notFound, sendInternalError, sendNotFound, sendSuccess }
 
 dotenv.config();
 
-const app = express();
+const app: Express = express();
 const port = process.env.PORT || 3389;
 const prisma = new PrismaClient();
 
