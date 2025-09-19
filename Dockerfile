@@ -41,8 +41,11 @@ RUN apt-get update \
 ENV TZ=Asia/Shanghai
 ENV NODE_ENV=production
 
-# 启用 pnpm 并安装全局工具
+# 启用 pnpm 并设置全局目录
 RUN corepack enable
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN pnpm setup
 RUN pnpm add -g pm2 prisma
 
 # 从构建阶段复制文件

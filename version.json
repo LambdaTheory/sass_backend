@@ -1,12 +1,12 @@
 {
-  "version": "v1.0.30",
-  "description": "修复Docker环境下bcrypt模块兼容性问题",
-  "date": "2025-09-19 12:03:03",
+  "version": "v1.0.31",
+  "description": "优化Docker构建，使用多阶段构建避免宿主机依赖问题",
+  "date": "2025-09-19 12:08:05",
   "changes": [
-    "添加构建工具(build-essential, python3)支持原生模块编译",
-    "在Dockerfile中添加bcrypt模块重新构建步骤",
-    "修改entrypoint.sh支持USE_NODE环境变量直接启动",
-    "提供绕过PM2的启动方式解决bcrypt加载问题",
-    "完善Docker部署兼容性解决方案"
+    "重构Dockerfile使用多阶段构建(builder + runner)",
+    "分离构建环境和运行环境，避免宿主机node_modules冲突",
+    "优化镜像大小，运行镜像不包含构建工具",
+    "确保.dockerignore正确排除node_modules和dist",
+    "提升Docker部署的稳定性和可靠性"
   ]
 }
