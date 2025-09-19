@@ -13,7 +13,6 @@ ENV TZ=Asia/Shanghai
 RUN corepack enable
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN pnpm setup
 
 # 仅复制包管理文件，优先利用缓存
 COPY package*.json pnpm-lock.yaml ./
