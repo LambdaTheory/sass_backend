@@ -1,12 +1,12 @@
 {
-  "version": "v1.0.33",
-  "description": "修复Docker构建中Prisma客户端生成问题",
-  "date": "2025-09-19 13:31:44",
+  "version": "v1.0.34",
+  "description": "修复主Dockerfile中TypeScript构建问题",
+  "date": "2025-09-19 13:37:03",
   "changes": [
-    "在Dockerfile.cron中添加Prisma客户端生成步骤",
-    "修复TypeScript编译时PrismaClient类型缺失问题",
-    "确保Docker构建过程中正确生成@prisma/client类型",
-    "解决所有Prisma相关的TypeScript编译错误",
-    "完善Docker cron容器的构建流程"
+    "修复主Dockerfile中缺少tsconfig.json的问题",
+    "优化Docker构建流程，明确复制TypeScript配置文件",
+    "确保多阶段构建中正确生成dist目录",
+    "解决PM2启动时找不到/app/dist/index.js的错误",
+    "完善Docker构建的文件复制策略"
   ]
 }

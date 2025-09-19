@@ -22,8 +22,12 @@ RUN pnpm install --frozen-lockfile
 COPY prisma ./prisma
 RUN npx prisma generate
 
-# 复制源码并构建
-COPY . .
+# 复制 TypeScript 配置和源码
+COPY tsconfig.json ./
+COPY src ./src
+COPY scripts ./scripts
+
+# 构建 TypeScript
 RUN pnpm run build
 
 # 生产镜像
