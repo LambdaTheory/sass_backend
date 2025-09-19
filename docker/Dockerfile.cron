@@ -1,7 +1,7 @@
 FROM node:20-slim
 
 # 安装cron
-RUN apt-get update && apt-get install -y dcron
+RUN apt-get update && apt-get install -y cron
 
 # 设置工作目录
 WORKDIR /app
@@ -17,18 +17,18 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # 复制crontab文件
-COPY docker/crontab /etc/crontabs/root
+COPY docker/crontab /etc/cron.d/app-cron
 
 # 创建日志目录
 RUN mkdir -p /var/log
 
 # 设置crontab权限
-RUN chmod 0644 /etc/crontabs/root
+RUN chmod 0644 /etc/cron.d/app-cron
 
 # 创建启动脚本
 RUN echo '#!/bin/sh' > /start-cron.sh && \
     echo 'echo "Starting cron daemon..."' >> /start-cron.sh && \
-    echo 'crond -f -d 8' >> /start-cron.sh && \
+    echo 'cron -f' >> /start-cron.sh && \
     chmod +x /start-cron.sh
 
 # 定时任务服务不需要暴露端口
