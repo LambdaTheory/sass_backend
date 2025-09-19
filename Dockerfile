@@ -6,13 +6,17 @@ ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
 # 安装必要工具、OpenSSL和PM2
-# 安装 Prisma 所需的系统库
+# 安装 Prisma 所需的系统库和bcrypt编译依赖
 RUN apk add --no-cache \
     netcat-openbsd \
     openssl \
     openssl-dev \
     ca-certificates \
     libc6-compat \
+    build-base \
+    python3 \
+    make \
+    g++ \
     && update-ca-certificates
 
 # 安装 pnpm 和 PM2
@@ -27,6 +31,9 @@ COPY package*.json pnpm-lock.yaml ./
 
 # 安装依赖（包含开发依赖，用于ts-node）
 RUN pnpm install --frozen-lockfile
+
+# 重新构建bcrypt原生模块
+RUN pnpm rebuild bcrypt
 
 # 复制应用代码
 COPY . .
