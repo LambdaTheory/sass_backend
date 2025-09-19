@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y cron
 # 设置工作目录
 WORKDIR /app
 
-# 复制package文件
-COPY package*.json ./
+# 复制package文件和lockfile
+COPY package*.json pnpm-lock.yaml ./
 
 # 安装依赖
 RUN npm install pnpm -g
