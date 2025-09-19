@@ -12,6 +12,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=mysql://daojusaas:${MYSQL_PASSWORD}@mysql:3306/daojusaas
       - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGIN=${CORS_ORIGIN}
     volumes:
       - ./logs:/app/logs
     networks:
