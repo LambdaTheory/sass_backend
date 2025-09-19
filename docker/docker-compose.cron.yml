@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  daojusaas-cron:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cron
+    container_name: daojusaas-cron
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ../logs:/var/log
+    networks:
+      - daojusaas-network
+    restart: unless-stopped
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    container_name: daojusaas-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - daojusaas-network
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  daojusaas-network:
+    driver: bridge

@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "init:permissions": "ts-node scripts/init-permissions.ts",
-    "init:admin": "ts-node scripts/init-admin.ts"
+    "init:admin": "ts-node scripts/init-admin.ts",
+    "cleanup:templates": "ts-node scripts/cleanup-deleted-templates.ts"
   },
   "keywords": [
     "express",

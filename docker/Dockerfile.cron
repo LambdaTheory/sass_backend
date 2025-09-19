@@ -1,0 +1,37 @@
+FROM node:18-alpine
+
+# 安装cron
+RUN apk add --no-cache dcron
+
+# 设置工作目录
+WORKDIR /app
+
+# 复制package文件
+COPY package*.json ./
+
+# 安装依赖
+RUN npm ci --only=production
+
+# 复制应用代码
+COPY . .
+
+# 复制crontab文件
+COPY docker/crontab /etc/crontabs/root
+
+# 创建日志目录
+RUN mkdir -p /var/log
+
+# 设置crontab权限
+RUN chmod 0644 /etc/crontabs/root
+
+# 创建启动脚本
+RUN echo '#!/bin/sh' > /start-cron.sh && \
+    echo 'echo "Starting cron daemon..."' >> /start-cron.sh && \
+    echo 'crond -f -d 8' >> /start-cron.sh && \
+    chmod +x /start-cron.sh
+
+# 暴露端口（如果需要健康检查）
+EXPOSE 3000
+
+# 启动cron守护进程
+CMD ["/start-cron.sh"]

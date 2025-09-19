@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # 主应用服务
+  daojusaas-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: daojusaas-api
+    ports:
+      - "3389"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://daojusaas:${MYSQL_PASSWORD}@mysql:3306/daojusaas
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - daojusaas-network
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # 定时任务服务
+  daojusaas-cron:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cron
+    container_name: daojusaas-cron
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=mysql://daojusaas:${MYSQL_PASSWORD}@mysql:3306/daojusaas
+      - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./logs:/var/log
+    networks:
+      - daojusaas-network
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # MySQL数据库服务
+  mysql:
+    image: mysql:8.0
+    container_name: daojusaas-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=daojusaas
+      - MYSQL_USER=daojusaas
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3306"
+    networks:
+      - daojusaas-network
+    restart: unless-stopped
+    healthcheck:
+        test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+        timeout: 20s
+        retries: 10
+        start_period: 40s
+
+  # 定时任务服务
+  cron:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cron
+    container_name: daojusaas-cron
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - NODE_ENV=production
+    volumes:
+      - ./scripts:/app/scripts
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    networks:
+      - daojusaas-network
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+
+networks:
+  daojusaas-network:
+    driver: bridge

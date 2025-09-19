@@ -584,9 +584,16 @@ export class PlayerItemService {
         template?.status === "DELETED" || template?.status === "PENDING_DELETE";
       const isTemplateExpired = template?.expire_date && now > (Number(template.expire_date) / 1000);
 
+      // 检查道具是否可用：模板状态为PENDING_DELETE或DELETED时不可用
+      const isAvailable = template ? 
+        (template.status !== 'PENDING_DELETE' && template.status !== 'DELETED') : 
+        true;
+
       return {
         ...item,
         item_name: template?.item_name || "未知道具",
+        is_available: isAvailable, // 添加可用性标识
+        unavailable_reason: !isAvailable ? '道具模板已被删除，暂不可用' : null, // 不可用原因
         status:
           isExpired || isTemplateInactive || isTemplateDeleted || isTemplateExpired
             ? "UNUSABLE"
@@ -781,7 +788,6 @@ export class PlayerItemService {
           merchant_id: data.merchant_id,
           app_id: data.app_id,
           is_active: "ACTIVE",
-          status: "NORMAL",
         },
       });
 
@@ -789,6 +795,20 @@ export class PlayerItemService {
         return {
           success: false,
           message: "道具模板不存在或已失效",
+        };
+      }
+
+      if (itemTemplate.status === "PENDING_DELETE") {
+        return {
+          success: false,
+          message: "道具模板已被删除，暂不可用",
+        };
+      }
+
+      if (itemTemplate.status !== "NORMAL") {
+        return {
+          success: false,
+          message: "道具模板状态异常，无法消费",
         };
       }
 

@@ -160,4 +160,20 @@ router.put(
   ItemTemplateController.updateItemTemplate
 );
 
+/**
+ * 删除道具模板（软删除）
+ * DELETE /item-templates/:id
+ * 权限要求：item_template_delete
+ * 路径参数：
+ * - id: 道具模板ID
+ * 查询参数：
+ * - merchant_id: 商户ID（超级管理员必须提供）
+ */
+router.delete(
+  '/:id',
+  authMiddleware,
+  requirePermission({ resource: 'item_template', action: 'delete' }),
+  ItemTemplateController.deleteItemTemplate
+);
+
 export default router;

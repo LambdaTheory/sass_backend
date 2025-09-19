@@ -571,5 +571,64 @@ export class ItemTemplateController {
     }
   }
 
+  /**
+   * 删除道具模板（软删除）
+   * DELETE /item-templates/:id
+   */
+  static async deleteItemTemplate(req: AuthRequest, res: Response) {
+    const user = req.user;
+    const { id } = req.params;
+    
+    if (!user) {
+      return sendBadRequest(res, '用户信息缺失');
+    }
+
+    if (!id) {
+      return sendBadRequest(res, '道具模板ID不能为空');
+    }
+
+    try {
+      // 权限检查：使用统一权限校验方法
+      // 从请求体中获取merchant_id，如果没有则从查询参数中获取
+      const merchantIdFromRequest = req.body.merchant_id || req.query.merchant_id as string | undefined;
+      if (!user) {
+         return sendUnauthorized(res, '用户未认证');
+       }
+       
+       const permissionResult = AuthUtils.getMerchantAccessPermission(
+         user,
+         merchantIdFromRequest
+      );
+
+      if (!permissionResult.allowed) {
+        return sendForbidden(res, permissionResult.message!);
+      }
+
+      const merchantId = permissionResult.merchantId!;
+
+      // 调用服务层删除数据
+      const deletedTemplate = await itemTemplateService.deleteItemTemplate(
+        id,
+        merchantId
+      );
+
+      if (!deletedTemplate) {
+        return sendNotFound(res, '道具模板不存在或无权访问');
+      }
+
+      // 转换BigInt字段为数字以便JSON序列化和前端正确解析
+      const responseData = {
+        ...deletedTemplate,
+        created_at: Number(deletedTemplate.created_at),
+        updated_at: Number(deletedTemplate.updated_at),
+        expire_date: deletedTemplate.expire_date ? Number(deletedTemplate.expire_date) : null
+      };
+
+      return sendSuccess(res, responseData, '道具模板删除成功');
+    } catch (error) {
+      console.error('删除道具模板失败:', error);
+      return sendInternalError(res, '删除道具模板失败');
+    }
+  }
 
 }

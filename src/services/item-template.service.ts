@@ -315,4 +315,170 @@ export class ItemTemplateService {
       throw new Error('获取道具模板统计信息失败');
     }
   }
+
+  /**
+   * 软删除道具模板（设置为待删除状态）
+   * @param templateId 模板ID
+   * @param merchantId 商户ID
+   * @returns 删除结果
+   */
+  async deleteItemTemplate(
+    templateId: string,
+    merchantId: string
+  ): Promise<ItemTemplate | null> {
+    try {
+      // 首先检查模板是否存在且属于指定商户
+      const existingTemplate = await this.prisma.itemTemplate.findFirst({
+        where: {
+          id: templateId,
+          merchant_id: merchantId
+        }
+      });
+
+      if (!existingTemplate) {
+        return null;
+      }
+
+      // 检查模板是否已经是删除状态
+      if (existingTemplate.status === ItemLifecycle.DELETED || 
+          existingTemplate.status === ItemLifecycle.PENDING_DELETE) {
+        return existingTemplate;
+      }
+
+      // 更新模板状态为待删除，并记录确认删除时间
+      const updatedTemplate = await this.prisma.itemTemplate.update({
+        where: {
+          id: templateId
+        },
+        data: {
+          status: ItemLifecycle.PENDING_DELETE,
+          confirmed_delete_at: BigInt(Date.now()),
+          updated_at: BigInt(Date.now())
+        },
+        include: {
+          app: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          merchant: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      return updatedTemplate;
+    } catch (error) {
+      console.error('删除道具模板失败:', error);
+      throw new Error('删除道具模板失败');
+    }
+  }
+
+  /**
+   * 获取待删除的道具模板列表（用于定时任务）
+   * @param daysBefore 多少天前的数据
+   * @returns 待删除的模板列表
+   */
+  async getPendingDeleteTemplates(daysBefore: number = 7): Promise<ItemTemplate[]> {
+    try {
+      const cutoffTime = BigInt(Date.now() - daysBefore * 24 * 60 * 60 * 1000);
+      
+      const templates = await this.prisma.itemTemplate.findMany({
+        where: {
+          status: ItemLifecycle.PENDING_DELETE,
+          confirmed_delete_at: {
+            lte: cutoffTime
+          }
+        },
+        include: {
+          app: {
+            select: {
+              id: true,
+              name: true
+            }
+          },
+          merchant: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      return templates;
+    } catch (error) {
+      console.error('获取待删除道具模板列表失败:', error);
+      throw new Error('获取待删除道具模板列表失败');
+    }
+  }
+
+  /**
+   * 永久删除道具模板（用于定时任务）
+   * @param templateId 模板ID
+   * @returns 删除结果
+   */
+  async permanentDeleteTemplate(templateId: string): Promise<boolean> {
+    try {
+      // 更新状态为已删除，而不是物理删除
+      const result = await this.prisma.itemTemplate.update({
+        where: {
+          id: templateId
+        },
+        data: {
+          status: ItemLifecycle.DELETED,
+          updated_at: BigInt(Date.now())
+        }
+      });
+
+      return !!result;
+    } catch (error) {
+      console.error('永久删除道具模板失败:', error);
+      throw new Error('永久删除道具模板失败');
+    }
+  }
+
+  /**
+   * 批量处理待删除的道具模板（用于定时任务）
+   * @param daysBefore 多少天前的数据
+   * @returns 处理结果
+   */
+  async cleanupPendingDeleteTemplates(daysBefore: number = 7): Promise<{
+    processed: number;
+    success: number;
+    failed: number;
+    errors: string[];
+  }> {
+    try {
+      const pendingTemplates = await this.getPendingDeleteTemplates(daysBefore);
+      const result = {
+        processed: pendingTemplates.length,
+        success: 0,
+        failed: 0,
+        errors: [] as string[]
+      };
+
+      for (const template of pendingTemplates) {
+        try {
+          await this.permanentDeleteTemplate(template.id);
+          result.success++;
+          console.log(`成功删除道具模板: ${template.id} (${template.item_name})`);
+        } catch (error) {
+          result.failed++;
+          const errorMsg = `删除道具模板失败: ${template.id} - ${error}`;
+          result.errors.push(errorMsg);
+          console.error(errorMsg);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('批量清理待删除道具模板失败:', error);
+      throw new Error('批量清理待删除道具模板失败');
+    }
+  }
 }

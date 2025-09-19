@@ -39,25 +39,26 @@ model App {
 }
 
 model ItemTemplate {
-  id              String        @id @db.VarChar(30)
-  merchant_id     String        @db.VarChar(36)
-  app_id          String        @db.VarChar(36)
-  item_type       String        @db.VarChar(30)
-  item_name       String        @db.VarChar(30)
-  item_icon       String?       @db.VarChar(255)
-  eff_arg         String        @db.Text
-  is_active       ItemStatus    @default(ACTIVE)
-  status          ItemLifecycle @default(NORMAL)
-  expire_duration Int?
-  expire_date     BigInt?
-  limit_max       Int?
-  daily_limit_max Int?
-  total_limit     Int?
-  custom          String?       @db.Text
-  created_at      BigInt
-  updated_at      BigInt
-  app             App           @relation(fields: [app_id], references: [id], onDelete: Cascade)
-  merchant        Merchant      @relation(fields: [merchant_id], references: [id], onDelete: Cascade)
+  id                  String        @id @db.VarChar(30)
+  merchant_id         String        @db.VarChar(36)
+  app_id              String        @db.VarChar(36)
+  item_type           String        @db.VarChar(30)
+  item_name           String        @db.VarChar(30)
+  item_icon           String?       @db.VarChar(255)
+  eff_arg             String        @db.Text
+  is_active           ItemStatus    @default(ACTIVE)
+  status              ItemLifecycle @default(NORMAL)
+  expire_duration     Int?
+  expire_date         BigInt?
+  limit_max           Int?
+  daily_limit_max     Int?
+  total_limit         Int?
+  custom              String?       @db.Text
+  confirmed_delete_at BigInt?       // 确认删除时间戳，用于定时任务清理
+  created_at          BigInt
+  updated_at          BigInt
+  app                 App           @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  merchant            Merchant      @relation(fields: [merchant_id], references: [id], onDelete: Cascade)
 
   @@unique([merchant_id, id])
   @@index([app_id], map: "item_templates_app_id_fkey")
