@@ -62,27 +62,7 @@ services:
         retries: 10
         start_period: 40s
 
-  # 定时任务服务
-  cron:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.cron
-    container_name: daojusaas-cron-job
-    environment:
-      - DATABASE_URL=mysql://daojusaas:${MYSQL_PASSWORD}@mysql:3306/daojusaas
-      - NODE_ENV=production
-      - JWT_SECRET=${JWT_SECRET}
-    volumes:
-      - ./scripts:/app/scripts
-      - ./src:/app/src
-      - ./prisma:/app/prisma
-      - ./logs:/var/log
-    networks:
-      - daojusaas-network
-    depends_on:
-      mysql:
-        condition: service_healthy
-    restart: unless-stopped
+
 
 volumes:
   mysql_data:

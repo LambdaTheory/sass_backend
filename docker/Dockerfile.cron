@@ -10,7 +10,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # 安装依赖
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # 复制应用代码
 COPY . .
@@ -30,8 +30,7 @@ RUN echo '#!/bin/sh' > /start-cron.sh && \
     echo 'crond -f -d 8' >> /start-cron.sh && \
     chmod +x /start-cron.sh
 
-# 暴露端口（如果需要健康检查）
-EXPOSE 3000
+# 定时任务服务不需要暴露端口
 
 # 启动cron守护进程
 CMD ["/start-cron.sh"]
