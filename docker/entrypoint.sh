@@ -20,4 +20,10 @@ node dist/scripts/init-admin.js || echo "管理员初始化失败或已存在"
 
 # 启动应用
 echo "启动应用..."
-pm2-runtime start ecosystem.config.js
+if [ "$USE_NODE" = "true" ]; then
+  echo "使用 Node.js 直接启动（绕过 PM2）"
+  node dist/index.js
+else
+  echo "使用 PM2 启动"
+  pm2-runtime start ecosystem.config.js
+fi

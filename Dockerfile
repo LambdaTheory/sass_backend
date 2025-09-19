@@ -2,9 +2,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# 安装运行期需要的工具（用于健康检查和数据库连接检查）
+# 安装运行期需要的工具（用于健康检查和数据库连接检查）以及构建工具
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl netcat-traditional \
+  && apt-get install -y --no-install-recommends curl netcat-traditional build-essential python3 \
   && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Asia/Shanghai
@@ -19,6 +19,9 @@ COPY package*.json pnpm-lock.yaml ./
 
 # 安装依赖（包含 dev 依赖用于构建）
 RUN pnpm install --frozen-lockfile
+
+# 修复 bcrypt 模块兼容性问题
+RUN pnpm rebuild bcrypt
 
 # 复制 Prisma schema 并生成客户端
 COPY prisma ./prisma
