@@ -76,6 +76,8 @@ export class MerchantController {
           id: true,
           name: true,
           status: true,
+          created_at: true,
+          updated_at: true,
           users: {
             select: {
               id: true,

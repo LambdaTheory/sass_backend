@@ -204,6 +204,8 @@ describe('Merchant Routes - 商户列表安全性验证', () => {
         id: 'merchant-1',
         name: '测试商户1',
         status: 1,
+        created_at: BigInt(Date.now()),
+        updated_at: BigInt(Date.now()),
         users: [
           {
             id: 'user-1',
@@ -221,6 +223,8 @@ describe('Merchant Routes - 商户列表安全性验证', () => {
         id: 'merchant-2',
         name: '测试商户2',
         status: 0,
+        created_at: BigInt(Date.now()),
+        updated_at: BigInt(Date.now()),
         users: [
           {
             id: 'user-3',
@@ -273,7 +277,7 @@ describe('Merchant Routes - 商户列表安全性验证', () => {
         expect(merchant).toHaveProperty('users');
         
         // 确保商户对象只包含预期的字段
-        const expectedMerchantFields = ['id', 'name', 'status', 'users'];
+        const expectedMerchantFields = ['id', 'name', 'status', 'created_at', 'updated_at', 'users'];
         const actualMerchantFields = Object.keys(merchant);
         expect(actualMerchantFields.sort()).toEqual(expectedMerchantFields.sort());
       });
