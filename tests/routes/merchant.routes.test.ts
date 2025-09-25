@@ -204,8 +204,8 @@ describe('Merchant Routes - 商户列表安全性验证', () => {
         id: 'merchant-1',
         name: '测试商户1',
         status: 1,
-        created_at: BigInt(Date.now()),
-        updated_at: BigInt(Date.now()),
+        created_at: Date.now(),
+        updated_at: Date.now(),
         users: [
           {
             id: 'user-1',
@@ -223,8 +223,8 @@ describe('Merchant Routes - 商户列表安全性验证', () => {
         id: 'merchant-2',
         name: '测试商户2',
         status: 0,
-        created_at: BigInt(Date.now()),
-        updated_at: BigInt(Date.now()),
+        created_at: Date.now(),
+        updated_at: Date.now(),
         users: [
           {
             id: 'user-3',

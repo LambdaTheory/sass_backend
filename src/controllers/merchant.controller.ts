@@ -92,8 +92,15 @@ export class MerchantController {
         },
       });
 
+      // 处理BigInt转换
+      const processedMerchants = merchants.map(merchant => ({
+        ...merchant,
+        created_at: merchant.created_at ? Number(merchant.created_at) : null,
+        updated_at: merchant.updated_at ? Number(merchant.updated_at) : null,
+      }));
+
       const responseData = {
-        list: merchants,
+        list: processedMerchants,
         pagination: {
           current: currentPage,
           pageSize: size,
