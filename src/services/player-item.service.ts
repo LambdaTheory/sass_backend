@@ -431,7 +431,7 @@ export class PlayerItemService {
 
     const queries = existingTables.map(
       (table) =>
-        `SELECT COALESCE(SUM(amount), 0) as total FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${itemId}' AND created_at >= ${startTime} AND created_at <= ${endTime} AND amount > 0`
+        `SELECT COALESCE(SUM(amount), 0) as total FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${itemId}' AND created_at >= ${startTime} AND created_at <= ${endTime} AND record_type = 'GRANT'`
     );
 
     const unionQuery = `SELECT SUM(total) as grand_total FROM (${queries.join(

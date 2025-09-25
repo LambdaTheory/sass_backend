@@ -28,6 +28,7 @@ describe('PlayerItemService', () => {
       getItemRecordTable: jest.fn(),
       getAllItemRecordTables: jest.fn(),
       getAllPlayerItemTables: jest.fn(),
+      getItemRecordTables: jest.fn(),
     };
 
     // 创建服务实例
@@ -702,6 +703,64 @@ describe('PlayerItemService', () => {
       expect(result.message).toBe('道具发放成功');
       expect(result.playerItem).toEqual(mockNewItem);
       expect(result.itemRecord).toEqual(mockItemRecord);
+    });
+
+    it('应该正确检查每日发放上限，只统计GRANT类型的记录', async () => {
+      // Mock 幂等性检查
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      
+      // Mock 应用查询 - 应用正常
+      mockPrisma.app.findFirst.mockResolvedValue({
+        id: 'app-1',
+        merchant_id: 'merchant-1',
+        status: 1, // 启用状态
+      });
+
+      // Mock 道具模板更新（过期检查）
+      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
+
+      // Mock 道具模板查询 - 设置每日发放上限为1
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: null,
+        total_limit: null,
+        daily_limit_max: 1, // 每日发放上限为1
+        expire_date: null,
+        expire_duration: null,
+      });
+
+      // Mock getAllPlayerItemTables 和 getAllItemRecordTables
+       mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+       mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+       mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // Mock 查询玩家当前持有的可用道具数量 - 0个
+       mockPrisma.$queryRawUnsafe
+         .mockResolvedValueOnce([]) // 幂等性检查
+         .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 持有数量查询
+         .mockResolvedValueOnce([{ total: BigInt(1) }]); // 每日发放数量查询 - 已发放1个
+
+      const result = await service.grantPlayerItem(mockData, idempotencyKey);
+
+      expect(result.success).toBe(false);
+       expect(result.message).toBe('超出道具每日限制，今日已获得0个，限制1个');
+      
+      // 验证查询条件包含 record_type = 'GRANT'
+       const allCalls = mockPrisma.$queryRawUnsafe.mock.calls;
+       const hasGrantQuery = allCalls.some((call: any[]) => 
+         typeof call[0] === 'string' && call[0].includes("record_type = 'GRANT'")
+       );
+       expect(hasGrantQuery).toBe(true);
+       
+       // 验证不再使用 amount > 0 的查询条件
+       const hasAmountQuery = allCalls.some((call: any[]) => 
+         typeof call[0] === 'string' && call[0].includes('amount > 0') && call[0].includes('item_records')
+       );
+       expect(hasAmountQuery).toBe(false);
     });
 
     it('应该正确将expire_duration从小时转换为秒', () => {
