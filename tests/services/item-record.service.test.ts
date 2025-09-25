@@ -11,6 +11,7 @@ const mockPrisma = {
 const mockShardingService = {
   getItemRecordTables: jest.fn(),
   getItemRecordTable: jest.fn(),
+  filterExistingTables: jest.fn(),
 } as unknown as ShardingService;
 
 describe('ItemRecordService', () => {
@@ -19,6 +20,8 @@ describe('ItemRecordService', () => {
   beforeEach(() => {
     itemRecordService = new ItemRecordService(mockPrisma, mockShardingService);
     jest.clearAllMocks();
+    // Mock filterExistingTables to return all tables by default
+    (mockShardingService.filterExistingTables as jest.Mock).mockImplementation(async (tables) => tables);
   });
 
   describe('getItemRecords', () => {

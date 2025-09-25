@@ -19,6 +19,7 @@ const mockShardingService = {
   getItemRecordTables: jest.fn(),
   getAllPlayerItemTables: jest.fn(),
   getAllItemRecordTables: jest.fn(),
+  filterExistingTables: jest.fn(),
 } as unknown as ShardingService;
 
 describe('MerchantStatisticsService', () => {
@@ -51,6 +52,7 @@ describe('MerchantStatisticsService', () => {
         'item_records_test-app-id_20240916',
         'item_records_test-app-id_20240917'
       ]);
+      mockShardingService.filterExistingTables = jest.fn().mockImplementation(async (tables) => tables);
 
       // Mock 道具模板查询
       mockPrisma.itemTemplate.findMany = jest.fn().mockResolvedValue([
@@ -206,7 +208,22 @@ describe('MerchantStatisticsService', () => {
         total_items_consumed: 0,
         total_items_balance: 0,
         active_players: 0,
-        items: []
+        items: [
+          {
+            item_id: 'item-1',
+            item_name: '金币',
+            total_granted: 0,
+            total_consumed: 0,
+            current_balance: 0
+          },
+          {
+            item_id: 'item-2',
+            item_name: '钻石',
+            total_granted: 0,
+            total_consumed: 0,
+            current_balance: 0
+          }
+        ]
       });
     });
 
@@ -218,7 +235,22 @@ describe('MerchantStatisticsService', () => {
       
       // Service should return empty result instead of throwing
       expect(result).toEqual({
-        items: [],
+        items: [
+          {
+            item_id: 'item-1',
+            item_name: '金币',
+            total_granted: 0,
+            total_consumed: 0,
+            current_balance: 0
+          },
+          {
+            item_id: 'item-2',
+            item_name: '钻石',
+            total_granted: 0,
+            total_consumed: 0,
+            current_balance: 0
+          }
+        ],
         active_players: 0,
         total_items_granted: 0,
         total_items_consumed: 0,

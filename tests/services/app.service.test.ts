@@ -14,6 +14,7 @@ describe('AppService', () => {
     // Mock the sharding service methods
     jest.spyOn(shardingService, 'getAllPlayerItemTables').mockResolvedValue(['player_items_test_202301']);
     jest.spyOn(shardingService, 'getAllItemRecordTables').mockResolvedValue(['item_records_test_20230101']);
+    jest.spyOn(shardingService, 'filterExistingTables').mockImplementation(async (tables) => tables); // 假设所有表都存在
     (appService as any).shardingService = shardingService;
   });
 

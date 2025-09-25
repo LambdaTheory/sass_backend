@@ -295,6 +295,38 @@ export class ShardingService {
 
   // ==================== 工具方法 ====================
 
+  /**
+   * 检查表是否实际存在于数据库中
+   */
+  async checkTableExists(tableName: string): Promise<boolean> {
+    try {
+      const result = await this.prisma.$queryRawUnsafe<Array<{ table_name: string }>>(
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?`,
+        tableName
+      );
+      return result.length > 0;
+    } catch (error) {
+      console.warn(`检查表 ${tableName} 是否存在时出错:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 过滤出实际存在的表
+   */
+  async filterExistingTables(tableNames: string[]): Promise<string[]> {
+    const existingTables: string[] = [];
+    
+    for (const tableName of tableNames) {
+      const exists = await this.checkTableExists(tableName);
+      if (exists) {
+        existingTables.push(tableName);
+      }
+    }
+    
+    return existingTables;
+  }
+
   private generateUUID(): string {
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
       /[xy]/g,

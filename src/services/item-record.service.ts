@@ -125,30 +125,51 @@ export class ItemRecordService {
     
     const whereClause = whereConditions.join(' AND ');
     
-    // 查询总数
-    const countQueries = tables.map(table => 
-      `SELECT COUNT(*) as count FROM \`${table}\` WHERE ${whereClause}`
-    );
+    // 过滤出实际存在的表
+    const existingTables = await this.shardingService.filterExistingTables(tables);
     
-    const countResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
-      countQueries.join(' UNION ALL ')
-    );
+    if (existingTables.length === 0) {
+       return {
+         records: [],
+         total: 0
+       };
+     }
     
-    const total = countResult.reduce((sum, item) => sum + Number(item.count), 0);
+    let total = 0;
+    let rawRecords: any[] = [];
     
-    // 查询记录
-    const offset = (page - 1) * pageSize;
-    const recordQueries = tables.map(table => 
-      `SELECT id, merchant_id, app_id, player_id, item_id, amount, record_type, remark, balance_after, created_at FROM \`${table}\` WHERE ${whereClause}`
-    );
-    
-    const recordsQuery = `
-      ${recordQueries.join(' UNION ALL ')}
-      ORDER BY created_at DESC
-      LIMIT ${pageSize} OFFSET ${offset}
-    `;
-    
-    const rawRecords = await this.prisma.$queryRawUnsafe<any[]>(recordsQuery);
+    try {
+      // 查询总数
+      const countQueries = existingTables.map(table => 
+        `SELECT COUNT(*) as count FROM \`${table}\` WHERE ${whereClause}`
+      );
+      
+      const countResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        countQueries.join(' UNION ALL ')
+      );
+      
+      total = countResult.reduce((sum, item) => sum + Number(item.count), 0);
+      
+      // 查询记录
+      const offset = (page - 1) * pageSize;
+      const recordQueries = existingTables.map(table => 
+        `SELECT id, merchant_id, app_id, player_id, item_id, amount, record_type, remark, balance_after, created_at FROM \`${table}\` WHERE ${whereClause}`
+      );
+      
+      const recordsQuery = `
+        ${recordQueries.join(' UNION ALL ')}
+        ORDER BY created_at DESC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `;
+      
+      rawRecords = await this.prisma.$queryRawUnsafe<any[]>(recordsQuery);
+    } catch (error) {
+       console.warn('查询道具流水失败:', error);
+       return {
+         records: [],
+         total: 0
+       };
+     }
     
     // 手动映射字段，确保类型正确
      const mappedRecords: ItemRecord[] = rawRecords.map(row => ({

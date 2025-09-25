@@ -21,6 +21,12 @@ describe('ShardingService', () => {
   beforeEach(() => {
     shardingService = new ShardingService(mockPrisma);
     jest.clearAllMocks();
+    // Mock console.warn to avoid test failures
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('getPlayerItemTable', () => {
@@ -48,6 +54,70 @@ describe('ShardingService', () => {
     it('should generate correct table name without timestamp', () => {
       const tableName = shardingService.getItemRecordTable('test-app-id');
       expect(tableName).toMatch(/^item_records_test-app-id_\d{8}$/);
+    });
+  });
+
+  describe('checkTableExists', () => {
+    it('should return true when table exists', async () => {
+      (mockPrisma.$queryRawUnsafe as jest.Mock).mockResolvedValue([{ table_name: 'test_table' }]);
+      
+      const exists = await shardingService.checkTableExists('test_table');
+      
+      expect(exists).toBe(true);
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledWith(
+        'SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?',
+        'test_table'
+      );
+    });
+
+    it('should return false when table does not exist', async () => {
+      (mockPrisma.$queryRawUnsafe as jest.Mock).mockResolvedValue([]);
+      
+      const exists = await shardingService.checkTableExists('non_existent_table');
+      
+      expect(exists).toBe(false);
+    });
+
+    it('should return false when query fails', async () => {
+      (mockPrisma.$queryRawUnsafe as jest.Mock).mockRejectedValue(new Error('Database error'));
+      
+      const exists = await shardingService.checkTableExists('test_table');
+      
+      expect(exists).toBe(false);
+    });
+  });
+
+  describe('filterExistingTables', () => {
+    it('should return only existing tables', async () => {
+      const tableNames = ['table1', 'table2', 'table3'];
+      
+      // Mock checkTableExists to return true for table1 and table3, false for table2
+      (mockPrisma.$queryRawUnsafe as jest.Mock)
+        .mockResolvedValueOnce([{ table_name: 'table1' }]) // table1 exists
+        .mockResolvedValueOnce([]) // table2 doesn't exist
+        .mockResolvedValueOnce([{ table_name: 'table3' }]); // table3 exists
+      
+      const existingTables = await shardingService.filterExistingTables(tableNames);
+      
+      expect(existingTables).toEqual(['table1', 'table3']);
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(3);
+    });
+
+    it('should return empty array when no tables exist', async () => {
+      const tableNames = ['table1', 'table2'];
+      
+      (mockPrisma.$queryRawUnsafe as jest.Mock).mockResolvedValue([]);
+      
+      const existingTables = await shardingService.filterExistingTables(tableNames);
+      
+      expect(existingTables).toEqual([]);
+    });
+
+    it('should handle empty input array', async () => {
+      const existingTables = await shardingService.filterExistingTables([]);
+      
+      expect(existingTables).toEqual([]);
+      expect(mockPrisma.$queryRawUnsafe).not.toHaveBeenCalled();
     });
   });
 

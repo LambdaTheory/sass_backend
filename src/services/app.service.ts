@@ -17,21 +17,41 @@ export class AppService {
     let itemTotalAmount = 0;
     let itemRecordCount = 0;
 
+    // 检查并过滤实际存在的玩家道具表
     if (playerItemTables.length > 0) {
-      const playerCountQuery = `SELECT COUNT(DISTINCT player_id) as count FROM (${playerItemTables.map(t => `SELECT player_id FROM \`${t}\``).join(' UNION ALL ')}) as players`;
-      const playerCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(playerCountQuery);
-      playerCount = Number(playerCountResult[0].count);
+      const existingPlayerItemTables = await this.shardingService.filterExistingTables(playerItemTables);
+      
+      if (existingPlayerItemTables.length > 0) {
+        try {
+          const playerCountQuery = `SELECT COUNT(DISTINCT player_id) as count FROM (${existingPlayerItemTables.map(t => `SELECT player_id FROM \`${t}\``).join(' UNION ALL ')}) as players`;
+          const playerCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(playerCountQuery);
+          playerCount = Number(playerCountResult[0].count);
 
-      const itemCountQuery = `SELECT COUNT(*) as count, SUM(amount) as totalAmount FROM (${playerItemTables.map(t => `SELECT amount FROM \`${t}\``).join(' UNION ALL ')}) as items`;
-      const itemCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint, totalAmount: number }[]>(itemCountQuery);
-      itemCount = Number(itemCountResult[0].count);
-      itemTotalAmount = Number(itemCountResult[0].totalAmount) || 0;
+          const itemCountQuery = `SELECT COUNT(*) as count, SUM(amount) as totalAmount FROM (${existingPlayerItemTables.map(t => `SELECT amount FROM \`${t}\``).join(' UNION ALL ')}) as items`;
+          const itemCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint, totalAmount: number }[]>(itemCountQuery);
+          itemCount = Number(itemCountResult[0].count);
+          itemTotalAmount = Number(itemCountResult[0].totalAmount) || 0;
+        } catch (error) {
+          console.warn('查询玩家道具统计失败:', error);
+          // 保持默认值 0
+        }
+      }
     }
 
+    // 检查并过滤实际存在的道具记录表
     if (itemRecordTables.length > 0) {
-      const itemRecordCountQuery = `SELECT COUNT(*) as count FROM (${itemRecordTables.map(t => `SELECT id FROM \`${t}\``).join(' UNION ALL ')}) as records`;
-      const itemRecordCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(itemRecordCountQuery);
-      itemRecordCount = Number(itemRecordCountResult[0].count);
+      const existingItemRecordTables = await this.shardingService.filterExistingTables(itemRecordTables);
+      
+      if (existingItemRecordTables.length > 0) {
+        try {
+          const itemRecordCountQuery = `SELECT COUNT(*) as count FROM (${existingItemRecordTables.map(t => `SELECT id FROM \`${t}\``).join(' UNION ALL ')}) as records`;
+          const itemRecordCountResult = await this.prisma.$queryRawUnsafe<{ count: bigint }[]>(itemRecordCountQuery);
+          itemRecordCount = Number(itemRecordCountResult[0].count);
+        } catch (error) {
+          console.warn('查询道具记录统计失败:', error);
+          // 保持默认值 0
+        }
+      }
     }
 
     return {
