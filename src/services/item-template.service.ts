@@ -58,13 +58,15 @@ export class ItemTemplateService {
     // 添加其他筛选条件
     if (item_type) {
       where.item_type = {
-        contains: item_type
+        contains: item_type,
+        mode: 'insensitive'
       };
     }
 
     if (item_name) {
       where.item_name = {
-        contains: item_name
+        contains: item_name,
+        mode: 'insensitive'
       };
     }
 

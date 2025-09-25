@@ -54,6 +54,7 @@ export class MerchantController {
       if (name) {
         whereCondition.name = {
           contains: name,
+          mode: 'insensitive',
         };
       }
       if (status !== undefined) {
