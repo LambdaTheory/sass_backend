@@ -1,4 +1,4 @@
-import { PrismaClient, ItemTemplate, ItemStatus, ItemLifecycle } from '@prisma/client';
+import { PrismaClient, ItemTemplate, ItemStatus, ItemLifecycle, Prisma } from '@prisma/client';
 
 // 道具模板查询选项
 export interface ItemTemplateQueryOptions {
@@ -49,37 +49,34 @@ export class ItemTemplateService {
       id
     } = options;
 
-    // 构建查询条件
-    const where: any = {
-      merchant_id: merchantId,
-      app_id: appId
-    };
+    // 构建查询条件和参数
+    let whereClause = 'WHERE it.merchant_id = ? AND it.app_id = ?';
+    const queryParams: any[] = [merchantId, appId];
 
     // 添加其他筛选条件
     if (item_type) {
-      where.item_type = {
-        contains: item_type,
-        mode: 'insensitive'
-      };
+      whereClause += ` AND it.item_type COLLATE utf8mb4_bin LIKE ?`;
+      queryParams.push(`%${item_type}%`);
     }
 
     if (item_name) {
-      where.item_name = {
-        contains: item_name,
-        mode: 'insensitive'
-      };
+      whereClause += ` AND it.item_name COLLATE utf8mb4_bin LIKE ?`;
+      queryParams.push(`%${item_name}%`);
     }
 
     if (is_active !== undefined) {
-      where.is_active = is_active;
+      whereClause += ` AND it.is_active = ?`;
+      queryParams.push(is_active);
     }
 
     if (status !== undefined) {
-      where.status = status;
+      whereClause += ` AND it.status = ?`;
+      queryParams.push(status);
     }
 
     if (id) {
-      where.id = id;
+      whereClause += ` AND it.id = ?`;
+      queryParams.push(id);
     }
 
     try {
@@ -87,37 +84,60 @@ export class ItemTemplateService {
       const skip = (page - 1) * pageSize;
       const take = pageSize;
 
-      // 并行查询总数和数据
-      const [templates, total] = await Promise.all([
-        this.prisma.itemTemplate.findMany({
-          where,
-          skip,
-          take,
-          orderBy: {
-            created_at: 'desc'
-          },
-          include: {
-            app: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            merchant: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
-          }
-        }),
-        this.prisma.itemTemplate.count({ where })
-      ]);
+      // 获取总数
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM ItemTemplate it
+        ${whereClause}
+      `;
+      const countResult = await this.prisma.$queryRaw<[{total: bigint}]>(
+        Prisma.sql([countQuery], ...queryParams)
+      );
+      const total = Number(countResult[0].total);
+
+      // 获取数据
+      const templatesQuery = `
+        SELECT 
+          it.*,
+          JSON_OBJECT('id', a.id, 'name', a.name) as app,
+          JSON_OBJECT('id', m.id, 'name', m.name) as merchant
+        FROM ItemTemplate it
+        LEFT JOIN App a ON it.app_id = a.id
+        LEFT JOIN Merchant m ON it.merchant_id = m.id
+        ${whereClause}
+        ORDER BY it.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      
+      const templates = await this.prisma.$queryRaw<any[]>(
+        Prisma.sql([templatesQuery], ...queryParams, take, skip)
+      );
+
+      // 处理JSON字段
+      const processedTemplates = templates.map(template => {
+        let app = null;
+        let merchant = null;
+        
+        try {
+          app = typeof template.app === 'string' ? JSON.parse(template.app) : template.app;
+          merchant = typeof template.merchant === 'string' ? JSON.parse(template.merchant) : template.merchant;
+        } catch (error) {
+          console.error('解析关联数据失败:', error);
+        }
+        
+        return {
+          ...template,
+          app,
+          merchant,
+          created_at: template.created_at ? Number(template.created_at) : null,
+          updated_at: template.updated_at ? Number(template.updated_at) : null,
+        };
+      });
 
       const totalPages = Math.ceil(total / pageSize);
 
       return {
-        templates,
+        templates: processedTemplates,
         total,
         page,
         pageSize,

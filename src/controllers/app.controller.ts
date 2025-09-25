@@ -267,27 +267,31 @@ export class AppController {
          return sendUnauthorized(res, "用户未认证");
        }
 
-       let whereCondition: Prisma.AppWhereInput = {};
+       // 构建查询条件和参数
+       let whereClause = 'WHERE 1=1';
+       const queryParams: any[] = [];
 
        // 权限检查和查询条件设置
        if (AuthUtils.isSuperAdmin(user)) {
          if (merchant_id) {
-           whereCondition.merchant_id = merchant_id as string;
+           whereClause += ` AND a.merchant_id = ?`;
+           queryParams.push(merchant_id as string);
          }
        } else if (AuthUtils.isMerchantUser(user)) {
-         whereCondition.merchant_id = user.merchant_id;
+         whereClause += ` AND a.merchant_id = ?`;
+         queryParams.push(user.merchant_id);
        }
 
        // 搜索条件
        if (search) {
-         whereCondition.name = {
-           contains: search as string,
-         };
+         whereClause += ` AND a.name COLLATE utf8mb4_bin LIKE ?`;
+         queryParams.push(`%${search}%`);
        }
 
        // 状态筛选
        if (status !== undefined) {
-         whereCondition.status = Number(status);
+         whereClause += ` AND a.status = ?`;
+         queryParams.push(Number(status));
        }
 
        // 分页参数处理
@@ -296,38 +300,62 @@ export class AppController {
        const limitNum = limit ? Number(limit) : pageSizeNum;
        const offsetNum = offset ? Number(offset) : (currentPage - 1) * pageSizeNum;
 
-      const apps = await prisma.app.findMany({
-        where: whereCondition,
-        include: {
-          merchant: {
-            select: {
-              id: true,
-              name: true,
-            },
-          },
-        },
-        orderBy: {
-          created_at: "desc",
-        },
-        take: limitNum,
-        skip: offsetNum,
-      });
+       // 获取总数
+       const countQuery = `
+         SELECT COUNT(*) as total
+         FROM App a
+         ${whereClause}
+       `;
+       const countResult = await prisma.$queryRaw<[{total: bigint}]>(
+         Prisma.sql([countQuery], ...queryParams)
+       );
+       const total = Number(countResult[0].total);
 
-      const total = await prisma.app.count({
-        where: whereCondition,
-      });
+       // 获取应用列表
+       const appsQuery = `
+         SELECT 
+           a.*,
+           JSON_OBJECT('id', m.id, 'name', m.name) as merchant
+         FROM App a
+         LEFT JOIN Merchant m ON a.merchant_id = m.id
+         ${whereClause}
+         ORDER BY a.created_at DESC
+         LIMIT ? OFFSET ?
+       `;
+       
+       const apps = await prisma.$queryRaw<any[]>(
+         Prisma.sql([appsQuery], ...queryParams, limitNum, offsetNum)
+       );
+
+       // 处理JSON字段
+       const processedApps = apps.map(app => {
+         let merchant = null;
+         
+         try {
+           merchant = typeof app.merchant === 'string' ? JSON.parse(app.merchant) : app.merchant;
+         } catch (error) {
+           console.error('解析商户数据失败:', error);
+         }
+         
+         return {
+           ...app,
+           merchant,
+           created_at: app.created_at ? Number(app.created_at) : null,
+           updated_at: app.updated_at ? Number(app.updated_at) : null,
+         };
+       });
 
       const totalPages = Math.ceil(total / pageSizeNum);
 
       const responseData = {
-        apps: apps.map((app) => ({
+        apps: processedApps.map((app) => ({
           id: app.id,
           name: app.name,
           merchant_id: app.merchant_id,
-          merchant_name: app.merchant.name,
+          merchant_name: app.merchant?.name,
           status: app.status,
-          created_at: Number(app.created_at),
-          updated_at: Number(app.updated_at),
+          created_at: app.created_at,
+          updated_at: app.updated_at,
         })),
         pagination: {
           total,

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/database";
+import { Prisma } from "@prisma/client";
 import {
   sendSuccess,
   sendInternalError,
@@ -46,55 +47,84 @@ export class MerchantController {
       const size = Number(pageSize);
       const offset = (currentPage - 1) * size;
 
-      // 构建查询条件
-      const whereCondition: any = {};
+      // 构建查询条件和参数
+      let whereClause = 'WHERE 1=1';
+      const queryParams: any[] = [];
+      let paramIndex = 1;
+
       if (id) {
-        whereCondition.id = id;
+        whereClause += ` AND m.id = ?`;
+        queryParams.push(id);
+        paramIndex++;
       }
       if (name) {
-        whereCondition.name = {
-          contains: name,
-          mode: 'insensitive',
-        };
+        whereClause += ` AND m.name COLLATE utf8mb4_bin LIKE ?`;
+        queryParams.push(`%${name}%`);
+        paramIndex++;
       }
       if (status !== undefined) {
-        whereCondition.status = Number(status);
+        whereClause += ` AND m.status = ?`;
+        queryParams.push(Number(status));
+        paramIndex++;
       }
 
       // 获取总数
-      const total = await prisma.merchant.count({
-        where: whereCondition,
-      });
+      const countQuery = `
+        SELECT COUNT(*) as total
+        FROM Merchant m
+        ${whereClause}
+      `;
+      const countResult = await prisma.$queryRaw<[{total: bigint}]>(
+        Prisma.sql([countQuery], ...queryParams)
+      );
+      const total = Number(countResult[0].total);
 
       // 获取商户列表
-      const merchants = await prisma.merchant.findMany({
-        where: whereCondition,
-        select: {
-          id: true,
-          name: true,
-          status: true,
-          created_at: true,
-          updated_at: true,
-          users: {
-            select: {
-              id: true,
-              username: true,
-            },
-          },
-        },
-        take: size,
-        skip: offset,
-        orderBy: {
-          created_at: 'desc',
-        },
-      });
+      const merchantQuery = `
+        SELECT 
+          m.id,
+          m.name,
+          m.status,
+          m.created_at,
+          m.updated_at,
+          JSON_ARRAYAGG(
+            CASE 
+              WHEN u.id IS NOT NULL 
+              THEN JSON_OBJECT('id', u.id, 'username', u.username)
+              ELSE NULL 
+            END
+          ) as users
+        FROM Merchant m
+        LEFT JOIN User u ON m.id = u.merchant_id
+        ${whereClause}
+        GROUP BY m.id, m.name, m.status, m.created_at, m.updated_at
+        ORDER BY m.created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      
+      const merchants = await prisma.$queryRaw<any[]>(
+        Prisma.sql([merchantQuery], ...queryParams, size, offset)
+      );
 
-      // 处理BigInt转换
-      const processedMerchants = merchants.map(merchant => ({
-        ...merchant,
-        created_at: merchant.created_at ? Number(merchant.created_at) : null,
-        updated_at: merchant.updated_at ? Number(merchant.updated_at) : null,
-      }));
+      // 处理BigInt转换和JSON解析
+      const processedMerchants = merchants.map(merchant => {
+        let users = [];
+        try {
+          // 解析JSON字符串并过滤掉null值
+          const parsedUsers = JSON.parse(merchant.users || '[]');
+          users = parsedUsers.filter((user: any) => user !== null);
+        } catch (error) {
+          console.error('解析用户数据失败:', error);
+          users = [];
+        }
+        
+        return {
+          ...merchant,
+          created_at: merchant.created_at ? Number(merchant.created_at) : null,
+          updated_at: merchant.updated_at ? Number(merchant.updated_at) : null,
+          users: users,
+        };
+      });
 
       const responseData = {
         list: processedMerchants,
