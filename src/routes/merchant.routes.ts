@@ -38,6 +38,17 @@ router.put(
 );
 
 /**
+ * 编辑商户信息
+ * PUT /:merchantId
+ */
+router.put(
+  "/:merchantId",
+  authMiddleware,
+  requireRole(["SUPER_ADMIN"]),
+  MerchantController.updateMerchant
+);
+
+/**
  * 删除商户
  * DELETE /:merchantId
  */

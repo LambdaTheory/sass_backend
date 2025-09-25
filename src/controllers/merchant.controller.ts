@@ -1,10 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/database";
 import {
-  success,
-  internalError,
-  badRequest,
-  notFound,
   sendSuccess,
   sendInternalError,
   sendBadRequest,
@@ -198,7 +194,7 @@ export class MerchantController {
       });
 
       if (existingUser) {
-        return sendBadRequest(res, "用户名已存在");
+        return sendBadRequest(res, "登录账号已存在");
       }
 
       // 密码加密
@@ -435,6 +431,89 @@ export class MerchantController {
     } catch (error) {
       console.error("获取商户公钥失败:", error);
       sendInternalError(res, "获取商户公钥失败");
+    }
+  }
+
+  /**
+   * 编辑商户信息
+   */
+  static async updateMerchant(req: AuthRequest, res: Response) {
+    const user = req.user;
+    const { merchantId } = req.params;
+    let { merchantName } = req.body;
+
+    try {
+      // 权限检查：只有超级管理员可以编辑商户信息
+      if (!user) {
+        return sendUnauthorized(res, "用户未认证");
+      }
+
+      if (!AuthUtils.isSuperAdmin(user)) {
+        return sendForbidden(res, "权限不足，只有超级管理员可以编辑商户信息");
+      }
+
+      // 参数验证
+      if (!merchantId) {
+        return sendBadRequest(res, "商户ID不能为空");
+      }
+
+      // 参数预处理：去除首尾空格
+      merchantName = merchantName?.trim();
+
+      // 商户名验证
+      if (!merchantName) {
+        return sendBadRequest(res, "商户名不能为空");
+      }
+      if (merchantName.length > 50) {
+        return sendBadRequest(res, "商户名不能超过50个字符");
+      }
+      // 检查是否包含非法字符（允许中文、字母、数字、下划线、空格）
+      const merchantNamePattern = /^[\u4e00-\u9fa5a-zA-Z0-9_\s]+$/;
+      if (!merchantNamePattern.test(merchantName)) {
+        return sendBadRequest(res, "商户名只能包含中文、字母、数字、下划线和空格");
+      }
+
+      // 检查商户是否存在
+      const merchant = await prisma.merchant.findUnique({
+        where: { id: merchantId }
+      });
+
+      if (!merchant) {
+        return sendNotFound(res, "商户不存在");
+      }
+
+      // 检查商户名是否已存在（排除当前商户）
+      const existingMerchant = await prisma.merchant.findFirst({
+        where: {
+          name: merchantName,
+          id: {
+            not: merchantId
+          }
+        },
+      });
+
+      if (existingMerchant) {
+        return sendBadRequest(res, "商户名已存在");
+      }
+
+      // 更新商户名
+      const updatedMerchant = await prisma.merchant.update({
+        where: { id: merchantId },
+        data: {
+          name: merchantName,
+          updated_at: BigInt(Date.now()),
+        },
+      });
+
+      const responseData = {
+        merchantId: updatedMerchant.id,
+        merchantName: updatedMerchant.name,
+      };
+
+      sendSuccess(res, responseData, "编辑商户信息成功");
+    } catch (error) {
+      console.error("编辑商户信息失败:", error);
+      sendInternalError(res, "编辑商户信息失败");
     }
   }
 
