@@ -69,26 +69,9 @@ export class MerchantController {
       }
 
       // 获取总数
-      const countQuery = `
-        SELECT COUNT(*) as total
-        FROM merchants m
-        ${whereClause}
-      `;
-      const countResult = await prisma.$queryRaw<[{total: bigint}]>`
-        SELECT COUNT(*) as total
-        FROM merchants m
-        ${Prisma.raw(whereClause)}
-      `;
-      
-      // 如果有查询参数，需要单独执行
-      let countResultFinal;
-      if (queryParams.length > 0) {
-        const fullCountQuery = `SELECT COUNT(*) as total FROM merchants m ${whereClause}`;
-        countResultFinal = await prisma.$queryRawUnsafe<[{total: bigint}]>(fullCountQuery, ...queryParams);
-      } else {
-        countResultFinal = countResult;
-      }
-      const total = Number(countResultFinal[0].total);
+      const countQuery = `SELECT COUNT(*) as total FROM merchants m ${whereClause}`;
+      const countResult = await prisma.$queryRawUnsafe<[{total: bigint}]>(countQuery, ...queryParams);
+      const total = Number(countResult[0].total);
 
       // 获取商户列表
       const merchantQuery = `
