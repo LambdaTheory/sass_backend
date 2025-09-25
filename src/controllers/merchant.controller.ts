@@ -71,13 +71,24 @@ export class MerchantController {
       // 获取总数
       const countQuery = `
         SELECT COUNT(*) as total
-        FROM Merchant m
+        FROM merchants m
         ${whereClause}
       `;
-      const countResult = await prisma.$queryRaw<[{total: bigint}]>(
-        Prisma.sql([countQuery], ...queryParams)
-      );
-      const total = Number(countResult[0].total);
+      const countResult = await prisma.$queryRaw<[{total: bigint}]>`
+        SELECT COUNT(*) as total
+        FROM merchants m
+        ${Prisma.raw(whereClause)}
+      `;
+      
+      // 如果有查询参数，需要单独执行
+      let countResultFinal;
+      if (queryParams.length > 0) {
+        const fullCountQuery = `SELECT COUNT(*) as total FROM merchants m ${whereClause}`;
+        countResultFinal = await prisma.$queryRawUnsafe<[{total: bigint}]>(fullCountQuery, ...queryParams);
+      } else {
+        countResultFinal = countResult;
+      }
+      const total = Number(countResultFinal[0].total);
 
       // 获取商户列表
       const merchantQuery = `
@@ -94,16 +105,16 @@ export class MerchantController {
               ELSE NULL 
             END
           ) as users
-        FROM Merchant m
-        LEFT JOIN User u ON m.id = u.merchant_id
+        FROM merchants m
+        LEFT JOIN users u ON m.id = u.merchant_id
         ${whereClause}
         GROUP BY m.id, m.name, m.status, m.created_at, m.updated_at
         ORDER BY m.created_at DESC
         LIMIT ? OFFSET ?
       `;
       
-      const merchants = await prisma.$queryRaw<any[]>(
-        Prisma.sql([merchantQuery], ...queryParams, size, offset)
+      const merchants = await prisma.$queryRawUnsafe<any[]>(
+        merchantQuery, ...queryParams, size, offset
       );
 
       // 处理BigInt转换和JSON解析

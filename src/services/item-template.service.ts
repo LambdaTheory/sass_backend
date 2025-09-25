@@ -87,11 +87,11 @@ export class ItemTemplateService {
       // 获取总数
       const countQuery = `
         SELECT COUNT(*) as total
-        FROM ItemTemplate it
+        FROM item_templates it
         ${whereClause}
       `;
-      const countResult = await this.prisma.$queryRaw<[{total: bigint}]>(
-        Prisma.sql([countQuery], ...queryParams)
+      const countResult = await this.prisma.$queryRawUnsafe<[{total: bigint}]>(
+        countQuery, ...queryParams
       );
       const total = Number(countResult[0].total);
 
@@ -101,16 +101,16 @@ export class ItemTemplateService {
           it.*,
           JSON_OBJECT('id', a.id, 'name', a.name) as app,
           JSON_OBJECT('id', m.id, 'name', m.name) as merchant
-        FROM ItemTemplate it
-        LEFT JOIN App a ON it.app_id = a.id
-        LEFT JOIN Merchant m ON it.merchant_id = m.id
+        FROM item_templates it
+        LEFT JOIN apps a ON it.app_id = a.id
+        LEFT JOIN merchants m ON it.merchant_id = m.id
         ${whereClause}
         ORDER BY it.created_at DESC
         LIMIT ? OFFSET ?
       `;
       
-      const templates = await this.prisma.$queryRaw<any[]>(
-        Prisma.sql([templatesQuery], ...queryParams, take, skip)
+      const templates = await this.prisma.$queryRawUnsafe<any[]>(
+        templatesQuery, ...queryParams, take, skip
       );
 
       // 处理JSON字段

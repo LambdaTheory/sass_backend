@@ -303,11 +303,11 @@ export class AppController {
        // 获取总数
        const countQuery = `
          SELECT COUNT(*) as total
-         FROM App a
+         FROM apps a
          ${whereClause}
        `;
-       const countResult = await prisma.$queryRaw<[{total: bigint}]>(
-         Prisma.sql([countQuery], ...queryParams)
+       const countResult = await prisma.$queryRawUnsafe<[{total: bigint}]>(
+         countQuery, ...queryParams
        );
        const total = Number(countResult[0].total);
 
@@ -316,15 +316,15 @@ export class AppController {
          SELECT 
            a.*,
            JSON_OBJECT('id', m.id, 'name', m.name) as merchant
-         FROM App a
-         LEFT JOIN Merchant m ON a.merchant_id = m.id
+         FROM apps a
+         LEFT JOIN merchants m ON a.merchant_id = m.id
          ${whereClause}
          ORDER BY a.created_at DESC
          LIMIT ? OFFSET ?
        `;
        
-       const apps = await prisma.$queryRaw<any[]>(
-         Prisma.sql([appsQuery], ...queryParams, limitNum, offsetNum)
+       const apps = await prisma.$queryRawUnsafe<any[]>(
+         appsQuery, ...queryParams, limitNum, offsetNum
        );
 
        // 处理JSON字段
