@@ -14,6 +14,7 @@ describe('PlayerItemService', () => {
       itemTemplate: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        updateMany: jest.fn(),
       },
       app: {
         findFirst: jest.fn(),
@@ -26,6 +27,7 @@ describe('PlayerItemService', () => {
       getPlayerItemTable: jest.fn(),
       getItemRecordTable: jest.fn(),
       getAllItemRecordTables: jest.fn(),
+      getAllPlayerItemTables: jest.fn(),
     };
 
     // 创建服务实例
@@ -101,6 +103,8 @@ describe('PlayerItemService', () => {
         obtain_time: expect.any(Number),
         status: 'USABLE',
         latest_idempotency_key: 'test-key-123',
+        is_available: true,
+        unavailable_reason: null,
       });
       
       expect(result[1]).toEqual({
@@ -115,6 +119,8 @@ describe('PlayerItemService', () => {
         obtain_time: expect.any(Number),
         status: 'USABLE',
         latest_idempotency_key: 'test-key-456',
+        is_available: true,
+        unavailable_reason: null,
       });
       
       // 验证道具模板查询参数
@@ -299,17 +305,20 @@ describe('PlayerItemService', () => {
       // 验证返回结果 - 道具数量应该为0，状态为UNUSABLE
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual({
-        id: 1,
-        merchant_id: merchantId,
-        app_id: appId,
-        player_id: playerId,
-        item_id: 'expired-item',
-        item_name: '过期道具',
-        amount: 0, // 模板过期后数量为0
-        expire_time: null,
-        obtain_time: expect.any(Number),
-        status: 'UNUSABLE', // 模板过期后状态为UNUSABLE
-      });
+          id: 1,
+          merchant_id: merchantId,
+          app_id: appId,
+          player_id: playerId,
+          item_id: 'expired-item',
+          item_name: '过期道具',
+          amount: 0,
+          expire_time: null,
+          obtain_time: expect.any(Number),
+          status: 'UNUSABLE',
+          is_available: true,
+          unavailable_reason: null,
+          latest_idempotency_key: undefined,
+        });
       
       // 验证创建了过期流水记录
       expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
@@ -403,32 +412,38 @@ describe('PlayerItemService', () => {
       // 过期道具应该数量为0，状态为UNUSABLE
       const expiredItem = result.find(item => item.item_id === 'expired-item');
       expect(expiredItem).toEqual({
-        id: 1,
-        merchant_id: merchantId,
-        app_id: appId,
-        player_id: playerId,
-        item_id: 'expired-item',
-        item_name: '过期道具',
-        amount: 0,
-        expire_time: null,
-        obtain_time: expect.any(Number),
-        status: 'UNUSABLE',
-      });
+          id: 1,
+          merchant_id: merchantId,
+          app_id: appId,
+          player_id: playerId,
+          item_id: 'expired-item',
+          item_name: '过期道具',
+          amount: 0,
+          expire_time: null,
+          obtain_time: expect.any(Number),
+          status: 'UNUSABLE',
+          is_available: true,
+          unavailable_reason: null,
+          latest_idempotency_key: undefined,
+        });
       
       // 正常道具应该保持原有数量和状态
       const normalItem = result.find(item => item.item_id === 'normal-item');
       expect(normalItem).toEqual({
-        id: 2,
-        merchant_id: merchantId,
-        app_id: appId,
-        player_id: playerId,
-        item_id: 'normal-item',
-        item_name: '正常道具',
-        amount: 10,
-        expire_time: null,
-        obtain_time: expect.any(Number),
-        status: 'USABLE',
-      });
+          id: 2,
+          merchant_id: merchantId,
+          app_id: appId,
+          player_id: playerId,
+          item_id: 'normal-item',
+          item_name: '正常道具',
+          amount: 10,
+          expire_time: null,
+          obtain_time: expect.any(Number),
+          status: 'USABLE',
+          is_available: true,
+          unavailable_reason: null,
+          latest_idempotency_key: undefined,
+        });
       
       // 验证只为过期道具创建了流水记录
       expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
@@ -464,6 +479,7 @@ describe('PlayerItemService', () => {
       mockShardingService.getPlayerItemTable.mockReturnValue('player_items_202409');
       mockShardingService.getItemRecordTable.mockReturnValue('item_records_202409');
       mockShardingService.getAllItemRecordTables.mockResolvedValue([]);
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
     });
 
     it('应该在道具模板不存在时返回错误', async () => {
@@ -568,6 +584,124 @@ describe('PlayerItemService', () => {
 
       expect(result.success).toBe(false);
       expect(result.message).toBe('道具模板已过期，无法发放道具');
+    });
+
+    it('应该在超出持有上限时返回错误', async () => {
+      // Mock 幂等性检查
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      
+      // Mock 应用查询 - 应用正常
+      mockPrisma.app.findFirst.mockResolvedValue({
+        id: 'app-1',
+        merchant_id: 'merchant-1',
+        status: 1, // 启用状态
+      });
+
+      // Mock 道具模板更新（过期检查）
+      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
+
+      // Mock 道具模板查询 - 设置持有上限为1
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: 1, // 持有上限为1
+        total_limit: null,
+        daily_limit_max: null,
+        expire_date: null,
+        expire_duration: null,
+      });
+
+      // Mock getAllPlayerItemTables
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+      
+      // Mock 查询玩家当前持有的可用道具数量 - 已经持有1个
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([{ grand_total: BigInt(1) }]);
+
+      // 尝试发放2个道具，应该失败
+      const testData = { ...mockData, amount: 2 };
+      const result = await service.grantPlayerItem(testData, idempotencyKey);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('超出道具持有上限，当前持有1个，持有上限1个');
+    });
+
+    it('应该在持有上限内成功发放道具', async () => {
+      // Mock 幂等性检查
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      
+      // Mock 应用查询 - 应用正常
+      mockPrisma.app.findFirst.mockResolvedValue({
+        id: 'app-1',
+        merchant_id: 'merchant-1',
+        status: 1, // 启用状态
+      });
+
+      // Mock 道具模板更新（过期检查）
+      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
+
+      // Mock 道具模板查询 - 设置持有上限为5
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: 5, // 持有上限为5
+        total_limit: null,
+        daily_limit_max: null,
+        expire_date: null,
+        expire_duration: null,
+      });
+
+      // Mock getAllPlayerItemTables
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+      
+      // Mock 查询玩家当前持有的可用道具数量 - 当前持有2个
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([{ grand_total: BigInt(2) }]);
+      
+      // Mock 插入道具记录
+      mockPrisma.$executeRawUnsafe.mockResolvedValue(undefined);
+      
+      // Mock 查询新插入的道具记录
+      const mockNewItem = {
+        id: 1,
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        player_id: 'player-1',
+        item_id: 'item-1',
+        amount: 2,
+        expire_time: null,
+        obtain_time: Math.floor(Date.now() / 1000),
+        status: 'USABLE',
+      };
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([mockNewItem]);
+      
+      // Mock 查询新插入的流水记录
+      const mockItemRecord = {
+        id: 1,
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        player_id: 'player-1',
+        item_id: 'item-1',
+        amount: 2,
+        record_type: 'GRANT',
+        remark: `idempotency:${idempotencyKey} | test grant`,
+        balance_after: 2,
+        created_at: Math.floor(Date.now() / 1000),
+      };
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([mockItemRecord]);
+
+      // 尝试发放2个道具，应该成功（当前2个 + 发放2个 = 4个 < 上限5个）
+      const testData = { ...mockData, amount: 2 };
+      const result = await service.grantPlayerItem(testData, idempotencyKey);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('道具发放成功');
+      expect(result.playerItem).toEqual(mockNewItem);
+      expect(result.itemRecord).toEqual(mockItemRecord);
     });
 
     it('应该正确将expire_duration从小时转换为秒', () => {

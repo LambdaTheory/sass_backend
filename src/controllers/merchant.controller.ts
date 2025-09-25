@@ -100,15 +100,19 @@ export class MerchantController {
         merchantQuery, ...queryParams, size, offset
       );
 
-      // 处理BigInt转换和JSON解析
+      // 处理BigInt转换和用户数据
       const processedMerchants = merchants.map(merchant => {
         let users = [];
         try {
-          // 解析JSON字符串并过滤掉null值
-          const parsedUsers = JSON.parse(merchant.users || '[]');
-          users = parsedUsers.filter((user: any) => user !== null);
+          // 直接使用返回的用户数据，如果是字符串则解析，如果是对象则直接使用
+          let usersData = merchant.users;
+          if (typeof usersData === 'string') {
+            usersData = JSON.parse(usersData || '[]');
+          }
+          // 确保是数组并过滤掉null值
+          users = Array.isArray(usersData) ? usersData.filter((user: any) => user !== null) : [];
         } catch (error) {
-          console.error('解析用户数据失败:', error);
+          console.error('处理用户数据失败:', error);
           users = [];
         }
         

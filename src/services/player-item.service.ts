@@ -187,7 +187,26 @@ export class PlayerItemService {
         };
       }
 
-      // 7. 检查发放限制
+      // 7. 检查持有上限
+      if (itemTemplate.limit_max && itemTemplate.limit_max > 0) {
+        // 查询玩家当前持有的可用道具数量
+        const currentUsableCount = await this.getPlayerItemUsableAmount(
+          data.merchant_id,
+          data.app_id,
+          data.player_id,
+          data.item_id,
+          tx
+        );
+
+        if (currentUsableCount + data.amount > itemTemplate.limit_max) {
+          return {
+            success: false,
+            message: `超出道具持有上限，当前持有${currentUsableCount}个，持有上限${itemTemplate.limit_max}个`,
+          };
+        }
+      }
+
+      // 8. 检查发放限制
       if (itemTemplate.total_limit && itemTemplate.total_limit > 0) {
         // 查询已发放总数
         const grantedCount = await this.getPlayerItemTotalAmount(
@@ -206,7 +225,7 @@ export class PlayerItemService {
         }
       }
 
-      // 7. 检查每日限制
+      // 9. 检查每日限制
       if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
         const todayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
         const todayEnd = Math.floor(
@@ -231,7 +250,7 @@ export class PlayerItemService {
         }
       }
 
-      // 8. 计算过期时间 - 根据道具模板配置计算最小过期时间
+      // 10. 计算过期时间 - 根据道具模板配置计算最小过期时间
       let expireTime: number | undefined;
       const expireTimes: number[] = [];
 
@@ -251,7 +270,7 @@ export class PlayerItemService {
         expireTime = Math.min(...expireTimes);
       }
 
-      // 9. 每次发放都创建新的道具记录（不再合并相同item_id的道具）
+      // 11. 每次发放都创建新的道具记录（不再合并相同item_id的道具）
       await tx.$executeRawUnsafe(
         `INSERT INTO \`${playerItemTableName}\` (merchant_id, app_id, player_id, item_id, amount, expire_time, obtain_time, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         data.merchant_id,
@@ -272,7 +291,7 @@ export class PlayerItemService {
 
       const playerItem = newItem[0];
 
-      // 11. 创建流水记录
+      // 12. 创建流水记录
       await tx.$executeRawUnsafe(
         `INSERT INTO \`${itemRecordTableName}\` (merchant_id, app_id, player_id, item_id, amount, record_type, remark, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         data.merchant_id,
@@ -299,6 +318,44 @@ export class PlayerItemService {
         message: "道具发放成功",
       };
     });
+  }
+
+  /**
+   * 获取玩家某个道具的可用数量（未过期且状态为USABLE）
+   */
+  private async getPlayerItemUsableAmount(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    tx?: any
+  ): Promise<number> {
+    const tables = await this.shardingService.getAllPlayerItemTables(appId);
+
+    if (tables.length === 0) {
+      return 0;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const queries = tables.map(
+      (table) =>
+        `SELECT COALESCE(SUM(amount), 0) as total FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${itemId}' AND status = 'USABLE' AND (expire_time IS NULL OR expire_time > ${now})`
+    );
+
+    const unionQuery = `SELECT SUM(total) as grand_total FROM (${queries.join(
+      " UNION ALL "
+    )}) as subquery`;
+    const client = tx || this.prisma;
+
+    try {
+      const result = (await client.$queryRawUnsafe(unionQuery)) as {
+        grand_total: bigint | null;
+      }[];
+      return Number(result[0]?.grand_total || 0);
+    } catch (error) {
+      console.warn("查询玩家可用道具数量失败，返回0:", error);
+      return 0;
+    }
   }
 
   /**
