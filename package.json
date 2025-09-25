@@ -23,7 +23,8 @@
     "db:studio": "prisma studio",
     "init:permissions": "ts-node scripts/init-permissions.ts",
     "init:admin": "ts-node scripts/init-admin.ts",
-    "cleanup:templates": "ts-node scripts/cleanup-deleted-templates.ts"
+    "cleanup:templates": "ts-node scripts/cleanup-deleted-templates.ts",
+    "cleanup:expired-items": "ts-node scripts/cleanup-expired-items.ts"
   },
   "keywords": [
     "express",

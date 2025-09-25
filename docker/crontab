@@ -1,3 +1,7 @@
 # 道具模板清理定时任务
 # 每天0点执行清理超过7天的待删除道具模板
 0 0 * * * root cd /app && node dist/scripts/cleanup-deleted-templates.js >> /var/log/cleanup-templates.log 2>&1
+
+# 过期道具清理定时任务
+# 每5分钟执行一次过期道具状态更新
+*/5 * * * * root cd /app && node dist/scripts/cleanup-expired-items.js >> /var/log/cleanup-expired-items.log 2>&1

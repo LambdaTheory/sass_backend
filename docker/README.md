@@ -64,6 +64,7 @@ docker-compose logs -f
 - 自动初始化权限和管理员账号
 - 自动启动定时任务容器
 - 定时任务每天0点自动清理过期模板
+- 定时任务每5分钟自动清理过期道具状态
 
 ### 3. 仅部署定时任务
 
@@ -101,6 +102,8 @@ npm run init:admin
 
 ### 定时任务服务 (daojusaas-cron)
 - **功能**: 执行定时清理任务
+  - 每天0点清理超过7天的待删除道具模板
+  - 每5分钟检查并更新过期道具状态为UNUSABLE
 - **调度**: 每天 0:00 执行
 - **日志**: 输出到 `/var/log/cleanup-templates.log`
 
@@ -142,11 +145,15 @@ docker exec -it [container_name] sh
 ### 查看定时任务日志
 
 ```bash
-# 查看清理任务日志
+# 查看模板清理日志
 docker exec daojusaas-cron tail -f /var/log/cleanup-templates.log
+
+# 查看过期道具清理日志
+docker exec daojusaas-cron tail -f /var/log/cleanup-expired-items.log
 
 # 手动执行清理任务
 docker exec daojusaas-cron npm run cleanup:templates
+docker exec daojusaas-cron npm run cleanup:expired-items
 ```
 
 ### 数据库备份

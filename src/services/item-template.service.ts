@@ -49,6 +49,9 @@ export class ItemTemplateService {
       id
     } = options;
 
+    // 首先检查并更新过期的道具模板
+    await this.updateExpiredTemplates(merchantId, appId);
+
     // 构建查询条件和参数
     let whereClause = 'WHERE it.merchant_id = ? AND it.app_id = ?';
     const queryParams: any[] = [merchantId, appId];
@@ -160,6 +163,9 @@ export class ItemTemplateService {
     merchantId: string
   ): Promise<ItemTemplate | null> {
     try {
+      // 先执行动态过期检查
+      await this.updateExpiredTemplates(merchantId);
+      
       const template = await this.prisma.itemTemplate.findFirst({
         where: {
           id: templateId,
@@ -501,6 +507,51 @@ export class ItemTemplateService {
     } catch (error) {
       console.error('批量清理待删除道具模板失败:', error);
       throw new Error('批量清理待删除道具模板失败');
+    }
+  }
+
+  /**
+   * 检查并更新过期的道具模板
+   * @param merchantId 商户ID
+   * @param appId 应用ID
+   * @returns 更新的模板数量
+   */
+  async updateExpiredTemplates(merchantId: string, appId?: string): Promise<number> {
+    try {
+      const currentTimestamp = Date.now();
+      
+      // 构建查询条件
+      const whereCondition: any = {
+        merchant_id: merchantId,
+        status: ItemLifecycle.NORMAL, // 只检查状态为NORMAL的模板
+        expire_date: {
+          not: null,
+          lte: BigInt(currentTimestamp) // 过期时间小于等于当前时间
+        }
+      };
+
+      // 如果指定了应用ID，添加到查询条件
+      if (appId) {
+        whereCondition.app_id = appId;
+      }
+
+      // 批量更新过期的道具模板状态
+      const updateResult = await this.prisma.itemTemplate.updateMany({
+        where: whereCondition,
+        data: {
+          status: ItemLifecycle.EXPIRED,
+          updated_at: BigInt(currentTimestamp)
+        }
+      });
+
+      if (updateResult.count > 0) {
+        console.log(`动态过期检查: 更新了 ${updateResult.count} 个过期的道具模板`);
+      }
+
+      return updateResult.count;
+    } catch (error) {
+      console.error('更新过期道具模板失败:', error);
+      throw new Error('更新过期道具模板失败');
     }
   }
 }

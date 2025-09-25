@@ -143,7 +143,25 @@ export class PlayerItemService {
         };
       }
 
-      // 4. 检查道具模板是否存在且有效
+      // 4. 先执行动态过期检查，确保数据库状态最新
+      const currentTimestamp = Date.now();
+      await tx.itemTemplate.updateMany({
+        where: {
+          merchant_id: data.merchant_id,
+          app_id: data.app_id,
+          status: "NORMAL",
+          expire_date: {
+            not: null,
+            lte: BigInt(currentTimestamp)
+          }
+        },
+        data: {
+          status: "EXPIRED",
+          updated_at: BigInt(currentTimestamp)
+        }
+      });
+
+      // 5. 检查道具模板是否存在且有效
       const itemTemplate = await tx.itemTemplate.findFirst({
         where: {
           id: data.item_id,
@@ -161,7 +179,7 @@ export class PlayerItemService {
         };
       }
 
-      // 5. 检查道具模板是否过期
+      // 6. 检查道具模板是否过期（这个检查现在应该不会触发，因为上面已经更新了状态）
       if (itemTemplate.expire_date && now > Number(itemTemplate.expire_date)) {
         return {
           success: false,
@@ -169,7 +187,7 @@ export class PlayerItemService {
         };
       }
 
-      // 6. 检查发放限制
+      // 7. 检查发放限制
       if (itemTemplate.total_limit && itemTemplate.total_limit > 0) {
         // 查询已发放总数
         const grantedCount = await this.getPlayerItemTotalAmount(
