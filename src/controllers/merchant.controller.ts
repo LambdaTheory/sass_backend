@@ -121,7 +121,7 @@ export class MerchantController {
    */
   static async createMerchant(req: AuthRequest, res: Response) {
     const user = req.user;
-    let { name, username, password } = req.body;
+    let { name, username, password, status } = req.body;
 
     try {
       // 权限检查：只有超级管理员可以创建商户
@@ -178,6 +178,11 @@ export class MerchantController {
         return sendBadRequest(res, "登录密码只能包含字母、数字和常用特殊符号");
       }
 
+      // 状态验证
+      if (status !== undefined && ![MerchantStatus.ENABLE, MerchantStatus.DISABLE].includes(Number(status))) {
+        return sendBadRequest(res, "状态值无效，只能为0（禁用）或1（启用）");
+      }
+
       // 检查商户名称是否已存在
       const existingMerchant = await prisma.merchant.findFirst({
         where: { name },
@@ -207,7 +212,7 @@ export class MerchantController {
           data: {
             id: randomUUID(),
             name,
-            status: MerchantStatus.ENABLE,
+            status: status !== undefined ? Number(status) : MerchantStatus.ENABLE,
             created_at: BigInt(Date.now()),
             updated_at: BigInt(Date.now()),
           },

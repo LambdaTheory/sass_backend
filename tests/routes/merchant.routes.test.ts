@@ -5,7 +5,7 @@
 
 describe('Merchant Routes - 创建商户校验规则验证', () => {
   // 模拟创建商户的校验逻辑（包含参数预处理）
-  const validateCreateMerchantData = (name: string, username: string, password: string) => {
+  const validateCreateMerchantData = (name: string, username: string, password: string, status?: number) => {
     // 参数预处理：去除首尾空格
     name = name?.trim();
     username = username?.trim();
@@ -49,6 +49,11 @@ describe('Merchant Routes - 创建商户校验规则验证', () => {
       if (!passwordPattern.test(password)) {
         errors.push('登录密码只能包含字母、数字和常用特殊符号');
       }
+    }
+    
+    // 状态验证
+    if (status !== undefined && ![0, 1].includes(Number(status))) {
+      errors.push('状态值无效，只能为0（禁用）或1（启用）');
     }
     
     return {
@@ -192,6 +197,35 @@ describe('Merchant Routes - 创建商户校验规则验证', () => {
        expect(result.errors).toContain('登录账号不能为空');
        expect(result.errors).toContain('登录密码不能为空');
      });
+  });
+
+  describe('商户状态校验', () => {
+    it('应该接受有效的状态值0（禁用）', () => {
+      const result = validateCreateMerchantData('测试商户', 'testuser', 'password123', 0);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('应该接受有效的状态值1（启用）', () => {
+      const result = validateCreateMerchantData('测试商户', 'testuser', 'password123', 1);
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('应该接受未传入状态值（使用默认值）', () => {
+      const result = validateCreateMerchantData('测试商户', 'testuser', 'password123');
+      expect(result.isValid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('应该拒绝无效的状态值', () => {
+      const invalidStatuses = [2, -1, 999, 'invalid'];
+      invalidStatuses.forEach(status => {
+        const result = validateCreateMerchantData('测试商户', 'testuser', 'password123', status as number);
+        expect(result.isValid).toBe(false);
+        expect(result.errors).toContain('状态值无效，只能为0（禁用）或1（启用）');
+      });
+    });
   });
 });
 
@@ -570,4 +604,5 @@ describe('Merchant Routes - 删除商户功能验证', () => {
       }
     });
   });
+
 });

@@ -1,12 +1,12 @@
 {
-  "version": "v1.0.34",
-  "description": "修复主Dockerfile中TypeScript构建问题",
-  "date": "2025-09-19 13:37:03",
+  "version": "v1.0.35",
+  "description": "修复商户创建时status参数被忽略的问题",
+  "date": "2025-09-25 11:00:08",
   "changes": [
-    "修复主Dockerfile中缺少tsconfig.json的问题",
-    "优化Docker构建流程，明确复制TypeScript配置文件",
-    "确保多阶段构建中正确生成dist目录",
-    "解决PM2启动时找不到/app/dist/index.js的错误",
-    "完善Docker构建的文件复制策略"
+    "修复MerchantController.createMerchant方法中硬编码status为ENABLE的问题",
+    "现在创建商户时会正确使用请求体中传入的status参数",
+    "添加对status参数的验证，确保只接受0（禁用）或1（启用）",
+    "更新相关单元测试，验证status参数的正确处理",
+    "解决用户传入status=0但创建出来的商户仍为启用状态的bug"
   ]
 }
