@@ -282,10 +282,10 @@ export class AppController {
          queryParams.push(user.merchant_id);
        }
 
-       // 搜索条件
+       // 搜索条件 - 支持按名称或ID搜索
        if (search) {
-         whereClause += ` AND a.name COLLATE utf8mb4_bin LIKE ?`;
-         queryParams.push(`%${search}%`);
+         whereClause += ` AND (a.name COLLATE utf8mb4_bin LIKE ? OR a.id = ?)`;
+         queryParams.push(`%${search}%`, search as string);
        }
 
        // 状态筛选

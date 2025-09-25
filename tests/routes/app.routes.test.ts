@@ -138,10 +138,10 @@ function simulateCreateApp(
 // 模拟查询应用列表的核心逻辑
 function simulateGetAppList(
   user: MockUser | null,
-  queryParams: { merchant_id?: string; limit?: number; offset?: number }
+  queryParams: { merchant_id?: string; search?: string; limit?: number; offset?: number }
 ): ApiResponse<any> {
   try {
-    const { merchant_id, limit = 10, offset = 0 } = queryParams;
+    const { merchant_id, search, limit = 10, offset = 0 } = queryParams;
 
     // 用户认证检查
     if (!user) {
@@ -159,6 +159,13 @@ function simulateGetAppList(
     } else if (user.user_type === "MERCHANT_OWNER") {
       // 商户用户只能查询自己商户下的应用
       filteredApps = filteredApps.filter(app => app.merchant_id === user.merchant_id);
+    }
+
+    // 搜索过滤 - 支持按名称或ID搜索
+    if (search) {
+      filteredApps = filteredApps.filter(app => 
+        app.name.includes(search) || app.id === search
+      );
     }
 
     // 分页
@@ -530,6 +537,56 @@ describe('App Routes - 应用管理功能验证', () => {
       const result = simulateGetAppList(null, {});
       
       expect(result.code).toBe(401);
+    });
+
+    it('应该支持按应用名称搜索', () => {
+      const mockUser: MockUser = {
+        id: 'admin-1',
+        username: 'admin',
+        user_type: 'SUPER_ADMIN',
+        status: 1
+      };
+      
+      const queryParams = { search: 'TestApp1' };
+      
+      const result = simulateGetAppList(mockUser, queryParams);
+      
+      expect(result.code).toBe(200);
+      expect(result.data.apps.length).toBeGreaterThan(0);
+      expect(result.data.apps.every((app: any) => app.name.includes('TestApp1'))).toBe(true);
+    });
+
+    it('应该支持按应用ID搜索', () => {
+      const mockUser: MockUser = {
+        id: 'admin-1',
+        username: 'admin',
+        user_type: 'SUPER_ADMIN',
+        status: 1
+      };
+      
+      const queryParams = { search: 'app-1' };
+      
+      const result = simulateGetAppList(mockUser, queryParams);
+      
+      expect(result.code).toBe(200);
+      expect(result.data.apps.length).toBe(1);
+      expect(result.data.apps[0].id).toBe('app-1');
+    });
+
+    it('搜索不存在的应用应该返回空结果', () => {
+      const mockUser: MockUser = {
+        id: 'admin-1',
+        username: 'admin',
+        user_type: 'SUPER_ADMIN',
+        status: 1
+      };
+      
+      const queryParams = { search: 'non-existent-app' };
+      
+      const result = simulateGetAppList(mockUser, queryParams);
+      
+      expect(result.code).toBe(200);
+      expect(result.data.apps.length).toBe(0);
     });
   });
 
