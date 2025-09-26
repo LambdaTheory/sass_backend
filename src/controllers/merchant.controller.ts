@@ -171,10 +171,10 @@ export class MerchantController {
       if (name.length > 30) {
         return sendBadRequest(res, "商户名称不能超过30个字符");
       }
-      // 检查是否包含中文、符号等非法字符（只允许字母、数字、下划线、中划线）
-      const namePattern = /^[a-zA-Z0-9_\-\u4e00-\u9fa5]+$/;
+      // 检查是否包含非法字符（允许中文、字母、数字、下划线、中划线、空格）
+      const namePattern = /^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]+$/;
       if (!namePattern.test(name)) {
-        return sendBadRequest(res, "商户名称只能包含字母、数字、下划线、中划线和中文字符");
+        return sendBadRequest(res, "商户名称只能包含中文、字母、数字、下划线、中划线和空格");
       }
 
       // 登录账号验证
@@ -493,13 +493,13 @@ export class MerchantController {
       if (!merchantName) {
         return sendBadRequest(res, "商户名不能为空");
       }
-      if (merchantName.length > 50) {
-        return sendBadRequest(res, "商户名不能超过50个字符");
+      if (merchantName.length > 30) {
+        return sendBadRequest(res, "商户名不能超过30个字符");
       }
-      // 检查是否包含非法字符（允许中文、字母、数字、下划线、空格）
-      const merchantNamePattern = /^[\u4e00-\u9fa5a-zA-Z0-9_\s]+$/;
+      // 检查是否包含非法字符（允许中文、字母、数字、下划线、中划线、空格）
+      const merchantNamePattern = /^[\u4e00-\u9fa5a-zA-Z0-9_\-\s]+$/;
       if (!merchantNamePattern.test(merchantName)) {
-        return sendBadRequest(res, "商户名只能包含中文、字母、数字、下划线和空格");
+        return sendBadRequest(res, "商户名只能包含中文、字母、数字、下划线、中划线和空格");
       }
 
       // 检查商户是否存在
