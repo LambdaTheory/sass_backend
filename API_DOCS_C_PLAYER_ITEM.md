@@ -157,11 +157,13 @@ func main() {
 
 ### 1. 获取玩家道具列表
 
-**接口地址：** `POST /merchant/player-items/query`
+**接口地址：** `POST /api/merchant/player-items/query`
 
 **请求方式：** POST
 
 **认证方式：** 商户签名
+
+**用途说明：** 用于获取某个玩家的所有道具列表，支持分页和多种筛选条件，适用于展示玩家背包、道具库存等场景。可以按时间范围、道具ID等条件筛选，返回分页信息。
 
 **请求参数：**
 
@@ -250,11 +252,13 @@ func main() {
 
 ### 2. 发放道具给玩家
 
-**接口地址：** `POST /merchant/player-items/grant`
+**接口地址：** `POST /api/merchant/player-items/grant`
 
 **请求方式：** POST
 
 **认证方式：** 商户签名
+
+**用途说明：** 用于向指定玩家发放道具，适用于游戏奖励、活动赠送、充值购买等场景。支持幂等性操作，确保同一请求不会重复发放道具。
 
 **请求头：**
 
@@ -321,11 +325,13 @@ func main() {
 
 ### 3. 获取单个玩家道具详情
 
-**接口地址：** `GET /merchant/player-items/{id}`
+**接口地址：** `GET /api/merchant/player-items/{id}`
 
 **请求方式：** GET
 
 **认证方式：** 商户签名
+
+**用途说明：** 用于查询单个特定道具记录的详细信息，适用于道具详情页展示、消费前检查道具状态等场景。通过道具记录ID直接获取单个道具的完整信息。
 
 **路径参数：**
 
@@ -381,17 +387,19 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
 
 ### 4. 消费玩家道具
 
-**接口地址：** `POST /merchant/player-items/{id}/consume`
+**接口地址：** `POST /api/merchant/player-items/{id}/consume`
 
 **请求方式：** POST
 
 **认证方式：** 商户签名
 
+**用途说明：** 用于消费玩家已拥有的道具，适用于道具使用、物品兑换、功能解锁等场景。支持幂等性操作，确保同一消费请求不会重复执行。
+
 **路径参数：**
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| id | string | 是 | 道具模板ID |
+| id | string | 是 | 道具记录ID |
 
 **请求头：**
 

@@ -92,4 +92,27 @@ router.post(
   PlayerItemController.consumePlayerItem
 );
 
+/**
+ * 导出道具背包流水
+ * POST /merchant/player-items/export
+ * 认证方式：商户签名
+ * 
+ * 请求体参数：
+ * - merchant_id: 商户ID（可选，默认使用认证商户）
+ * - app_id: 应用ID（必填）
+ * - player_id: 玩家ID（可选）
+ * - item_id: 道具ID（可选）
+ * - start_time: 开始时间戳（可选）
+ * - end_time: 结束时间戳（可选）
+ * - record_type: 操作类型（可选，GRANT/CONSUME/EXPIRE）
+ * 
+ * 返回：Excel文件流（.xlsx格式）
+ */
+router.post(
+  '/export',
+  merchantAuthMiddleware,
+  validateMerchantAppAccess(),
+  PlayerItemController.exportPlayerItemRecords
+);
+
 export { router as cPlayerItemRoutes };

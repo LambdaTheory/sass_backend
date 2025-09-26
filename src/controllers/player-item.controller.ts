@@ -12,6 +12,7 @@ import { AuthRequest } from "../types";
 import { PlayerItemService } from "../services/player-item.service";
 import { ItemRecordService } from "../services/item-record.service";
 import { ShardingService } from "../services/sharding.service";
+import { PlayerItemExportService } from "../services/player-item-export.service";
 import {
   PermissionUtils,
   PermissionChecker,
@@ -24,6 +25,7 @@ import {
 const shardingService = new ShardingService(prisma);
 const playerItemService = new PlayerItemService(prisma, shardingService);
 const itemRecordService = new ItemRecordService(prisma, shardingService);
+const playerItemExportService = new PlayerItemExportService(prisma, shardingService);
 
 /**
  * 玩家道具控制器
@@ -623,6 +625,97 @@ export class PlayerItemController {
     } catch (error) {
       console.error("消费道具失败:", error);
       return sendInternalError(res, "消费道具失败");
+    }
+  }
+
+  /**
+   * 导出道具背包流水
+   * POST /merchant/player-items/export
+   * 认证方式：商户签名
+   * 
+   * 请求体参数：
+   * - merchant_id: 商户ID（必填）
+   * - app_id: 应用ID（必填）
+   * - player_id: 玩家ID（可选）
+   * - item_id: 道具ID（可选）
+   * - start_time: 开始时间戳（可选）
+   * - end_time: 结束时间戳（可选）
+   * - record_type: 操作类型（可选，GRANT/CONSUME/EXPIRE）
+   * 
+   * 返回：Excel文件流
+   */
+  static async exportPlayerItemRecords(req: AuthRequest, res: Response) {
+    const merchant = (req as any).merchant; // 商户认证信息
+
+    try {
+      // 从请求体中获取参数
+      const {
+        merchant_id,
+        app_id,
+        player_id,
+        item_id,
+        start_time,
+        end_time,
+        record_type,
+      } = req.body;
+
+      // 验证必填参数
+      if (!app_id) {
+        return sendBadRequest(res, "app_id 是必填参数");
+      }
+
+      // 验证商户权限
+      if (merchant_id && merchant_id !== merchant.id) {
+        return sendBadRequest(res, "无权限访问指定商户的数据");
+      }
+
+      // 验证时间参数
+      if (start_time && (isNaN(start_time) || start_time < 0)) {
+        return sendBadRequest(res, "start_time 参数格式错误");
+      }
+
+      if (end_time && (isNaN(end_time) || end_time < 0)) {
+        return sendBadRequest(res, "end_time 参数格式错误");
+      }
+
+      if (start_time && end_time && start_time > end_time) {
+        return sendBadRequest(res, "开始时间不能大于结束时间");
+      }
+
+      // 验证操作类型
+      if (record_type && !['GRANT', 'CONSUME', 'EXPIRE'].includes(record_type)) {
+        return sendBadRequest(res, "record_type 参数值无效");
+      }
+
+      // 构建查询条件
+      const query = {
+        merchant_id: merchant.id,
+        app_id,
+        player_id,
+        item_id,
+        start_time,
+        end_time,
+        record_type,
+      };
+
+      // 生成Excel文件
+      const excelBuffer = await playerItemExportService.exportPlayerItemRecords(query);
+
+      // 生成文件名
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+      const filename = `道具背包流水_${merchant.id}_${app_id}_${timestamp}.xlsx`;
+
+      // 设置响应头
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
+      res.setHeader('Content-Length', excelBuffer.length);
+
+      // 发送文件
+      res.send(excelBuffer);
+
+    } catch (error) {
+      console.error("导出道具背包流水失败:", error);
+      return sendInternalError(res, "导出失败");
     }
   }
 }
