@@ -4,6 +4,22 @@
 
 本文档描述了C端商户专用的道具接口，使用商户签名认证方式，无需传统的JWT token。
 
+### 道具批次系统
+
+本系统采用**道具批次管理**机制，核心特点如下：
+
+- **批次独立性**：每次发放道具都会创建一个独立的批次记录，即使是相同的道具类型
+- **精确追踪**：每个批次都有独立的ID、数量、获得时间、过期时间等属性，便于精确追踪道具来源
+- **灵活过期**：不同批次可以设置不同的过期时间，支持复杂的道具生命周期管理
+
+**示例场景**：
+玩家可能同时拥有同一种道具的多个批次：
+- 批次1：100个金币，永不过期，来自新手奖励
+- 批次2：50个金币，7天后过期，来自活动奖励  
+- 批次3：200个金币，30天后过期，来自充值购买
+
+查询接口返回的是所有批次的详细信息，而不是汇总后的总数量。
+
 ## 认证方式
 
 ### 商户签名认证
@@ -165,6 +181,14 @@ func main() {
 
 **用途说明：** 用于获取某个玩家的所有道具列表，支持分页和多种筛选条件，适用于展示玩家背包、道具库存等场景。可以按时间范围、道具ID等条件筛选，返回分页信息。
 
+**批次概念说明：**
+- 每次发放道具都会创建一个独立的道具批次记录，即使是相同的道具类型
+- 每个批次有独立的ID、数量、获得时间、过期时间等属性
+- 同一个玩家可能拥有同一种道具的多个批次，例如：
+  - 批次1：100个金币，永不过期，来自新手奖励
+  - 批次2：50个金币，7天后过期，来自活动奖励
+- 这种设计便于追踪道具来源、管理过期时间、实现精确的道具流水记录
+
 **请求参数：**
 
 | 参数名 | 类型 | 必填 | 说明 |
@@ -195,22 +219,24 @@ func main() {
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | success | boolean | 请求是否成功 |
-| data.items | array | 道具列表 |
-| data.items[].id | number | 道具记录ID |
+| data.items | array | 道具批次列表（每个批次代表一次获得的道具记录） |
+| data.items[].id | number | 道具批次记录ID（唯一标识一个道具批次） |
 | data.items[].merchant_id | string | 商户ID |
 | data.items[].app_id | string | 应用ID |
 | data.items[].player_id | string | 玩家ID |
 | data.items[].item_id | string | 道具模板ID |
-| data.items[].item_name | string | 道具名称 |
-| data.items[].amount | number | 道具数量 |
-| data.items[].expire_time | number\|null | 过期时间戳（null表示永不过期） |
-| data.items[].obtain_time | number | 获得时间戳 |
-| data.items[].status | string | 道具状态（USABLE/UNUSABLE） |
-| data.items[].latest_idempotency_key | string | 最新操作的幂等性键 |
+| data.items[].item_name | string | 道具名称（从道具模板关联查询） |
+| data.items[].amount | number | 该批次的道具数量 |
+| data.items[].expire_time | number\|null | 该批次道具的过期时间戳（null表示永不过期） |
+| data.items[].obtain_time | number | 该批次道具的获得时间戳 |
+| data.items[].status | string | 道具状态（USABLE=可用/UNUSABLE=不可用） |
+| data.items[].is_available | boolean | 道具是否可用（考虑模板状态） |
+| data.items[].unavailable_reason | string\|null | 不可用原因（如"道具模板已被删除，暂不可用"） |
+| data.items[].latest_idempotency_key | string\|undefined | 最新操作的幂等性键（用于消费接口） |
 | data.pagination | object | 分页信息 |
 | data.pagination.page | number | 当前页码 |
 | data.pagination.pageSize | number | 每页数量 |
-| data.pagination.total | number | 总记录数 |
+| data.pagination.total | number | 总批次记录数 |
 | data.pagination.totalPages | number | 总页数 |
 | data.pagination.hasNext | boolean | 是否有下一页 |
 | data.pagination.hasPrev | boolean | 是否有上一页 |
@@ -234,13 +260,45 @@ func main() {
         "expire_time": null,
         "obtain_time": 1640995200,
         "status": "USABLE",
+        "is_available": true,
+        "unavailable_reason": null,
         "latest_idempotency_key": "key_123"
+      },
+      {
+        "id": 2,
+        "merchant_id": "merchant_123",
+        "app_id": "app_123",
+        "player_id": "player_456",
+        "item_id": "item_789",
+        "item_name": "金币",
+        "amount": 50,
+        "expire_time": 1672531200,
+        "obtain_time": 1640995300,
+        "status": "USABLE",
+        "is_available": true,
+        "unavailable_reason": null,
+        "latest_idempotency_key": "key_456"
+      },
+      {
+        "id": 3,
+        "merchant_id": "merchant_123",
+        "app_id": "app_123",
+        "player_id": "player_456",
+        "item_id": "item_888",
+        "item_name": "钻石",
+        "amount": 0,
+        "expire_time": null,
+        "obtain_time": 1640995400,
+        "status": "UNUSABLE",
+        "is_available": false,
+        "unavailable_reason": "道具模板已被删除，暂不可用",
+        "latest_idempotency_key": "key_789"
       }
     ],
     "pagination": {
       "page": 1,
       "pageSize": 20,
-      "total": 1,
+      "total": 3,
       "totalPages": 1,
       "hasNext": false,
       "hasPrev": false
@@ -293,8 +351,24 @@ func main() {
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | success | boolean | 请求是否成功 |
-| data.playerItem | object | 玩家道具信息 |
+| data.playerItem | object | 新创建或更新的道具批次信息 |
+| data.playerItem.id | number | 道具批次记录ID |
+| data.playerItem.merchant_id | string | 商户ID |
+| data.playerItem.app_id | string | 应用ID |
+| data.playerItem.player_id | string | 玩家ID |
+| data.playerItem.item_id | string | 道具模板ID |
+| data.playerItem.item_name | string | 道具名称 |
+| data.playerItem.amount | number | 该批次当前数量 |
+| data.playerItem.expire_time | number\|null | 过期时间戳 |
+| data.playerItem.obtain_time | number | 获得时间戳 |
+| data.playerItem.status | string | 道具状态（USABLE/UNUSABLE） |
 | data.itemRecord | object | 道具流水记录 |
+| data.itemRecord.id | number | 流水记录ID |
+| data.itemRecord.record_type | string | 操作类型（GRANT） |
+| data.itemRecord.amount | number | 发放数量 |
+| data.itemRecord.balance_after | number | 操作后余额 |
+| data.itemRecord.remark | string | 备注信息 |
+| data.itemRecord.created_at | number | 创建时间戳 |
 | message | string | 响应消息 |
 
 **响应示例：**
@@ -309,14 +383,19 @@ func main() {
       "app_id": "app_123",
       "player_id": "player_456",
       "item_id": "item_789",
-      "amount": 150,
+      "item_name": "金币",
+      "amount": 50,
+      "expire_time": null,
+      "obtain_time": 1640995200,
       "status": "USABLE"
     },
     "itemRecord": {
       "id": 1,
       "record_type": "GRANT",
       "amount": 50,
-      "remark": "活动奖励"
+      "balance_after": 50,
+      "remark": "idempotency:key_123 | 活动奖励",
+      "created_at": 1640995200
     }
   },
   "message": "道具发放成功"
@@ -358,7 +437,20 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | success | boolean | 请求是否成功 |
-| data.item | object | 道具详情 |
+| data.item | object | 道具批次详情 |
+| data.item.id | number | 道具批次记录ID |
+| data.item.merchant_id | string | 商户ID |
+| data.item.app_id | string | 应用ID |
+| data.item.player_id | string | 玩家ID |
+| data.item.item_id | string | 道具模板ID |
+| data.item.item_name | string | 道具名称 |
+| data.item.amount | number | 该批次当前数量 |
+| data.item.expire_time | number\|null | 过期时间戳 |
+| data.item.obtain_time | number | 获得时间戳 |
+| data.item.status | string | 道具状态（USABLE/UNUSABLE） |
+| data.item.is_available | boolean | 道具是否可用 |
+| data.item.unavailable_reason | string\|null | 不可用原因 |
+| data.item.latest_idempotency_key | string\|undefined | 最新操作的幂等性键 |
 | message | string | 响应消息 |
 
 **响应示例：**
@@ -378,6 +470,8 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
       "expire_time": null,
       "obtain_time": 1640995200,
       "status": "USABLE",
+      "is_available": true,
+      "unavailable_reason": null,
       "latest_idempotency_key": "key_123"
     }
   },
@@ -433,8 +527,24 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
 | 参数名 | 类型 | 说明 |
 |--------|------|------|
 | success | boolean | 请求是否成功 |
-| data.playerItem | object | 更新后的玩家道具信息 |
-| data.itemRecord | object | 道具流水记录 |
+| data.playerItem | object | 消费后更新的道具批次信息 |
+| data.playerItem.id | number | 道具批次记录ID |
+| data.playerItem.merchant_id | string | 商户ID |
+| data.playerItem.app_id | string | 应用ID |
+| data.playerItem.player_id | string | 玩家ID |
+| data.playerItem.item_id | string | 道具模板ID |
+| data.playerItem.item_name | string | 道具名称 |
+| data.playerItem.amount | number | 消费后该批次剩余数量 |
+| data.playerItem.expire_time | number\|null | 过期时间戳 |
+| data.playerItem.obtain_time | number | 获得时间戳 |
+| data.playerItem.status | string | 道具状态（USABLE/UNUSABLE） |
+| data.itemRecord | object | 道具消费流水记录 |
+| data.itemRecord.id | number | 流水记录ID |
+| data.itemRecord.record_type | string | 操作类型（CONSUME） |
+| data.itemRecord.amount | number | 消费数量（负数） |
+| data.itemRecord.balance_after | number | 消费后余额 |
+| data.itemRecord.remark | string | 备注信息 |
+| data.itemRecord.created_at | number | 创建时间戳 |
 | message | string | 响应消息 |
 
 **响应示例：**
@@ -449,14 +559,19 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
       "app_id": "app_123",
       "player_id": "player_456",
       "item_id": "item_789",
+      "item_name": "金币",
       "amount": 90,
+      "expire_time": null,
+      "obtain_time": 1640995200,
       "status": "USABLE"
     },
     "itemRecord": {
       "id": 2,
       "record_type": "CONSUME",
-      "amount": 10,
-      "remark": "购买商品"
+      "amount": -10,
+      "balance_after": 90,
+      "remark": "idempotency:key_456 | 购买商品",
+      "created_at": 1640995300
     }
   },
   "message": "道具消费成功"
@@ -504,6 +619,18 @@ GET /merchant/player-items/1?app_id=app_123&player_id=player_456
 5. **道具状态**：
    - USABLE：可用状态
    - UNUSABLE：不可用状态（如已过期）
+
+6. **道具批次管理**：
+   - 每次发放道具都会创建独立的批次记录，便于追踪来源和管理过期时间
+   - 同一种道具可能有多个批次，每个批次有独立的数量和过期时间
+   - 消费道具时按照FIFO（先进先出）原则，优先消费最早获得的批次
+   - 查询道具列表返回的是所有批次记录，而不是汇总数量
+   - 如需获取某种道具的总数量，需要在客户端对相同item_id的批次进行求和
+
+7. **道具可用性检查**：
+   - `is_available`字段表示道具是否可用，会考虑道具模板的状态
+   - `unavailable_reason`字段提供不可用的具体原因
+   - 即使道具状态为USABLE，如果模板被删除，道具仍可能不可用
 
 ## 路径说明
 

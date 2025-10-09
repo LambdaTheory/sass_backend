@@ -785,9 +785,10 @@ describe('PlayerItemService', () => {
         expireTimes.push(now + itemTemplate.expire_duration * 3600);
       }
       
-      // 如果有固定过期时间戳，直接使用
+      // 如果有固定过期时间戳，需要转换为秒时间戳
       if (itemTemplate.expire_date) {
-        expireTimes.push(Number(itemTemplate.expire_date));
+        // expire_date是毫秒时间戳，需要转换为秒时间戳
+        expireTimes.push(Number(itemTemplate.expire_date) / 1000);
       }
       
       // 取最小值作为过期时间

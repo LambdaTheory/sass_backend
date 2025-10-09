@@ -13,6 +13,8 @@ export interface PlayerItem {
   expire_time?: number;
   obtain_time: number;
   status: 'USABLE' | 'UNUSABLE';
+  is_available?: boolean; // 道具是否可用（考虑模板状态）
+  unavailable_reason?: string | null; // 不可用原因
   latest_idempotency_key?: string; // 最新的幂等性键
 }
 
@@ -180,7 +182,7 @@ export class PlayerItemService {
       }
 
       // 6. 检查道具模板是否过期（这个检查现在应该不会触发，因为上面已经更新了状态）
-      if (itemTemplate.expire_date && now > Number(itemTemplate.expire_date)) {
+      if (itemTemplate.expire_date && now > Number(itemTemplate.expire_date) / 1000) {
         return {
           success: false,
           message: "道具模板已过期，无法发放道具",
@@ -260,9 +262,10 @@ export class PlayerItemService {
         expireTimes.push(now + itemTemplate.expire_duration * 3600);
       }
 
-      // 如果有固定过期时间戳，直接使用
+      // 如果有固定过期时间戳，需要转换为秒时间戳
       if (itemTemplate.expire_date) {
-        expireTimes.push(Number(itemTemplate.expire_date));
+        // expire_date是毫秒时间戳，需要转换为秒时间戳
+        expireTimes.push(Number(itemTemplate.expire_date) / 1000);
       }
 
       // 取最小值作为过期时间
