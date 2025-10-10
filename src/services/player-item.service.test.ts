@@ -745,13 +745,12 @@ describe('PlayerItemService', () => {
       // Mock 查询玩家当前持有的可用道具数量 - 0个
        mockPrisma.$queryRawUnsafe
          .mockResolvedValueOnce([]) // 幂等性检查
-         .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 持有数量查询
-         .mockResolvedValueOnce([{ total: BigInt(1) }]); // 每日发放数量查询 - 已发放1个
+         .mockResolvedValueOnce([{ grand_total: BigInt(1) }]); // 每日发放数量查询 - 已发放1个
 
       const result = await service.grantPlayerItem(mockData, idempotencyKey);
 
       expect(result.success).toBe(false);
-       expect(result.message).toBe('超出道具每日限制，今日已获得0个，限制1个');
+       expect(result.message).toBe('超出道具每日限制，今日已获得1个，限制1个');
       
       // 验证查询条件包含 record_type = 'GRANT'
        const allCalls = mockPrisma.$queryRawUnsafe.mock.calls;

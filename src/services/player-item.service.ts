@@ -229,10 +229,10 @@ export class PlayerItemService {
 
       // 9. 检查每日限制
       if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
-        const todayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
-        const todayEnd = Math.floor(
-          new Date().setHours(23, 59, 59, 999) / 1000
-        );
+        // 获取当前日期的开始和结束时间戳（秒级）
+        const now = new Date();
+        const todayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000);
+        const todayEnd = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000);
 
         const todayGranted = await this.getPlayerItemAmountInTimeRange(
           data.merchant_id,
