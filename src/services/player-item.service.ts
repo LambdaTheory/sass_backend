@@ -66,6 +66,12 @@ export class PlayerItemService {
       now
     );
 
+    // 事务外预检查每日限制（避免事务隔离级别问题）
+    const preCheckResult = await this.preCheckDailyLimit(data);
+    if (!preCheckResult.success) {
+      return preCheckResult;
+    }
+
     // 使用事务确保数据一致性
     return await this.prisma.$transaction(async (tx) => {
       // 1. 检查幂等性 - 查询是否已经有相同的流水记录
@@ -513,6 +519,8 @@ export class PlayerItemService {
         todayEnd
       );
 
+
+
       if (todayGranted + data.amount > itemTemplate.daily_limit_max) {
         return {
           success: false,
@@ -858,20 +866,28 @@ export class PlayerItemService {
           const recordTables = await this.shardingService.getAllItemRecordTables(appId);
           
           if (recordTables.length > 0) {
-            // 构建查询最新流水记录的UNION语句
-            const queries = recordTables.map(
-              (table) =>
-                `SELECT remark, created_at FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${item.item_id}' AND remark LIKE 'idempotency:%'`
+            // 获取实际存在的表
+            const allExistingTables = await this.shardingService.getAllItemRecordTables(appId);
+            const existingTables = recordTables.filter((table) =>
+              allExistingTables.includes(table)
             );
             
-            const unionQuery = `(${queries.join(") UNION ALL (")}) ORDER BY created_at DESC LIMIT 1`;
-            const latestRecords = await this.prisma.$queryRawUnsafe<{remark: string, created_at: number}[]>(unionQuery);
+            if (existingTables.length > 0) {
+              // 构建查询最新流水记录的UNION语句
+              const queries = existingTables.map(
+                (table) =>
+                  `SELECT remark, created_at FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${item.item_id}' AND remark LIKE 'idempotency:%'`
+              );
+              
+              const unionQuery = `(${queries.join(") UNION ALL (")}) ORDER BY created_at DESC LIMIT 1`;
+              const latestRecords = await this.prisma.$queryRawUnsafe<{remark: string, created_at: number}[]>(unionQuery);
             
-            if (latestRecords.length > 0) {
-              const remark = latestRecords[0].remark;
-              if (remark && remark.startsWith('idempotency:')) {
-                const parts = remark.split(' | ');
-                latestIdempotencyKey = parts[0].replace('idempotency:', '');
+              if (latestRecords.length > 0) {
+                const remark = latestRecords[0].remark;
+                if (remark && remark.startsWith('idempotency:')) {
+                  const parts = remark.split(' | ');
+                  latestIdempotencyKey = parts[0].replace('idempotency:', '');
+                }
               }
             }
           }

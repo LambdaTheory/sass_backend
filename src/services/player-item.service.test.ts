@@ -541,10 +541,23 @@ describe('PlayerItemService', () => {
     });
 
     it('应该在应用被禁用时返回错误', async () => {
-      // Mock 幂等性检查
-      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      // Mock 道具模板查询 - 用于preCheckDailyLimit
+      mockPrisma.itemTemplate.findFirst.mockResolvedValueOnce({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        daily_limit_max: null, // 无每日限制
+      });
       
-      // Mock 第一次应用查询 - 应用被禁用
+      // Mock 预检查查询
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([{ grand_total: BigInt(0) }]);
+      
+      // Mock 幂等性检查
+      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([]);
+      
+      // Mock 应用查询 - 应用被禁用
       mockPrisma.app.findFirst.mockResolvedValueOnce({
         id: 'app-1',
         merchant_id: 'merchant-1',
@@ -554,7 +567,7 @@ describe('PlayerItemService', () => {
       const result = await service.grantPlayerItem(mockData, idempotencyKey);
 
       expect(result.success).toBe(false);
-      expect(result.message).toBe('应用已被禁用，无法核销道具');
+      expect(result.message).toBe('应用已被禁用，无法发放道具');
     });
 
     it('应该在道具模板过期时返回错误', async () => {
@@ -741,7 +754,6 @@ describe('PlayerItemService', () => {
       
       // Mock 查询 - 预检查时已发放1个，应该失败
       mockPrisma.$queryRawUnsafe
-        .mockResolvedValueOnce([]) // 幂等性检查
         .mockResolvedValueOnce([{ grand_total: BigInt(1) }]); // 预检查：今日已发放1个
 
       const result = await service.grantPlayerItem(mockData, idempotencyKey);
@@ -764,6 +776,9 @@ describe('PlayerItemService', () => {
     });
 
     it('应该防止通过多次小额发放绕过每日限制', async () => {
+      // 完全重置所有mock
+      jest.clearAllMocks();
+      
       // 设置每日限制为3个
       const dailyLimit = 3;
       
@@ -781,6 +796,14 @@ describe('PlayerItemService', () => {
         expire_duration: null,
       };
 
+      const mockData = {
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        player_id: 'player-1',
+        item_id: 'item-1',
+        amount: 2,
+      };
+
       // Mock 其他必要的服务
       mockPrisma.app.findFirst.mockResolvedValue({
         id: 'app-1',
@@ -788,53 +811,46 @@ describe('PlayerItemService', () => {
         status: 1,
       });
       mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
       mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
       mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
       mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+      mockShardingService.ensureTablesExist.mockResolvedValue(undefined);
+      mockShardingService.getPlayerItemTable.mockReturnValue('player_items_202409');
+      mockShardingService.getItemRecordTable.mockReturnValue('item_records_202409');
       
       // 第一次发放：今日已发放0个，发放2个，应该成功
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
       mockPrisma.$queryRawUnsafe
-        .mockResolvedValueOnce([]) // 幂等性检查
         .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 预检查：今日已发放0个
+        .mockResolvedValueOnce([]) // 幂等性检查
         .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 事务内检查：今日已发放0个
         .mockResolvedValueOnce([{ total: BigInt(0) }]) // 持有量检查
         .mockResolvedValueOnce([{ total: BigInt(0) }]) // 总量检查
-        .mockResolvedValueOnce([{ id: 1 }]); // 插入player_item后的查询结果
+        .mockResolvedValueOnce([{ id: 1 }]) // 插入player_item后的查询结果
+        .mockResolvedValueOnce([{ id: 1 }]); // 插入item_record后的查询结果
 
       // Mock 事务执行
       mockPrisma.$executeRawUnsafe.mockResolvedValue(undefined);
+      mockPrisma.$transaction.mockImplementation(async (callback: any) => {
+        return await callback(mockPrisma);
+      });
       
-      const firstResult = await service.grantPlayerItem(
-        { ...mockData, amount: 2 },
-        'first-grant-key'
-      );
-      
+      const firstResult = await service.grantPlayerItem(mockData, 'first-grant-key');
       expect(firstResult.success).toBe(true);
 
-      // 重置 mock 调用记录
-      jest.clearAllMocks();
-      
-      // 重新设置基础mock
-      mockPrisma.app.findFirst.mockResolvedValue({
-        id: 'app-1',
-        merchant_id: 'merchant-1',
-        status: 1,
-      });
-      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
-      mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
-      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
-      
       // 第二次发放：今日已发放2个，再发放2个，应该失败（2+2=4 > 3）
+      // 重新创建$queryRawUnsafe mock
+      mockPrisma.$queryRawUnsafe = jest.fn();
+      
+      // 重新设置mock
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
+      
+      // 设置mock返回值
       mockPrisma.$queryRawUnsafe
-        .mockResolvedValueOnce([]) // 幂等性检查
-        .mockResolvedValueOnce([{ grand_total: BigInt(2) }]); // 预检查：今日已发放2个
+        .mockResolvedValueOnce([{ grand_total: BigInt(2) }]) // 预检查：今日已发放2个
+        .mockResolvedValueOnce([]); // 幂等性检查：没有找到重复记录
 
-      const secondResult = await service.grantPlayerItem(
-        { ...mockData, amount: 2 },
-        'second-grant-key'
-      );
+      const secondResult = await service.grantPlayerItem(mockData, 'second-grant-key');
       
       expect(secondResult.success).toBe(false);
       expect(secondResult.message).toBe('超出道具每日限制，今日已获得2个，限制3个');
