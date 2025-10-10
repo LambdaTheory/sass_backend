@@ -191,8 +191,8 @@ export class PlayerItemService {
 
       // 7. 检查持有上限
       if (itemTemplate.limit_max && itemTemplate.limit_max > 0) {
-        // 查询玩家当前持有的可用道具数量
-        const currentUsableCount = await this.getPlayerItemUsableAmount(
+        // 查询玩家当前持有的可用道具数量（在事务中查询，自动获得锁）
+        const currentUsableCount = await this.getPlayerItemUsableAmountWithLock(
           data.merchant_id,
           data.app_id,
           data.player_id,
@@ -359,6 +359,47 @@ export class PlayerItemService {
       console.warn("查询玩家可用道具数量失败，返回0:", error);
       return 0;
     }
+  }
+
+  /**
+   * 获取玩家某个道具的可用数量（带锁，用于并发控制）
+   */
+  private async getPlayerItemUsableAmountWithLock(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    tx: any
+  ): Promise<number> {
+    const tables = await this.shardingService.getAllPlayerItemTables(appId);
+
+    if (tables.length === 0) {
+      return 0;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    let totalAmount = 0;
+
+    // 对每个表分别查询并加锁，然后累加结果
+    for (const table of tables) {
+      try {
+        const result = await tx.$queryRawUnsafe(
+          `SELECT COALESCE(SUM(amount), 0) as total FROM \`${table}\` WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND status = 'USABLE' AND (expire_time IS NULL OR expire_time > ?) FOR UPDATE`,
+          merchantId,
+          appId,
+          playerId,
+          itemId,
+          now
+        ) as { total: bigint }[];
+        
+        totalAmount += Number(result[0]?.total || 0);
+      } catch (error) {
+        // 如果表不存在或查询失败，继续下一个表
+        console.warn(`查询表 ${table} 失败，继续执行:`, error);
+      }
+    }
+
+    return totalAmount;
   }
 
   /**

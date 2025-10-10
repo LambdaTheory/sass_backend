@@ -588,8 +588,13 @@ describe('PlayerItemService', () => {
     });
 
     it('应该在超出持有上限时返回错误', async () => {
-      // Mock 幂等性检查
-      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      // Mock getAllItemRecordTables 以触发幂等性检查
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // Mock 幂等性检查和带锁的持有数量查询
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // 幂等性检查
+        .mockResolvedValueOnce([{ total: BigInt(1) }]); // 带锁的查询当前持有数量（单表）
       
       // Mock 应用查询 - 应用正常
       mockPrisma.app.findFirst.mockResolvedValue({
@@ -617,9 +622,6 @@ describe('PlayerItemService', () => {
 
       // Mock getAllPlayerItemTables
       mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
-      
-      // Mock 查询玩家当前持有的可用道具数量 - 已经持有1个
-      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([{ grand_total: BigInt(1) }]);
 
       // 尝试发放2个道具，应该失败
       const testData = { ...mockData, amount: 2 };
@@ -630,8 +632,42 @@ describe('PlayerItemService', () => {
     });
 
     it('应该在持有上限内成功发放道具', async () => {
-      // Mock 幂等性检查
-      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
+      // Mock getAllItemRecordTables 以触发幂等性检查
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // Mock 查询新插入的道具记录
+      const mockNewItem = {
+        id: 1,
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        player_id: 'player-1',
+        item_id: 'item-1',
+        amount: 2,
+        expire_time: null,
+        obtain_time: Math.floor(Date.now() / 1000),
+        status: 'USABLE',
+      };
+      
+      // Mock 查询新插入的流水记录
+      const mockItemRecord = {
+        id: 1,
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        player_id: 'player-1',
+        item_id: 'item-1',
+        amount: 2,
+        record_type: 'GRANT',
+        remark: `idempotency:${idempotencyKey} | test grant`,
+        balance_after: 2,
+        created_at: Math.floor(Date.now() / 1000),
+      };
+
+      // Mock 所有的$queryRawUnsafe调用，按调用顺序
+         mockPrisma.$queryRawUnsafe
+           .mockResolvedValueOnce([]) // 幂等性检查
+           .mockResolvedValueOnce([{ total: BigInt(2) }]) // 带锁的查询当前持有数量（单表）
+           .mockResolvedValueOnce([mockNewItem]) // 查询新插入的道具记录
+           .mockResolvedValueOnce([mockItemRecord]); // 查询新插入的流水记录
       
       // Mock 应用查询 - 应用正常
       mockPrisma.app.findFirst.mockResolvedValue({
@@ -660,40 +696,8 @@ describe('PlayerItemService', () => {
       // Mock getAllPlayerItemTables
       mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
       
-      // Mock 查询玩家当前持有的可用道具数量 - 当前持有2个
-      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([{ grand_total: BigInt(2) }]);
-      
       // Mock 插入道具记录
       mockPrisma.$executeRawUnsafe.mockResolvedValue(undefined);
-      
-      // Mock 查询新插入的道具记录
-      const mockNewItem = {
-        id: 1,
-        merchant_id: 'merchant-1',
-        app_id: 'app-1',
-        player_id: 'player-1',
-        item_id: 'item-1',
-        amount: 2,
-        expire_time: null,
-        obtain_time: Math.floor(Date.now() / 1000),
-        status: 'USABLE',
-      };
-      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([mockNewItem]);
-      
-      // Mock 查询新插入的流水记录
-      const mockItemRecord = {
-        id: 1,
-        merchant_id: 'merchant-1',
-        app_id: 'app-1',
-        player_id: 'player-1',
-        item_id: 'item-1',
-        amount: 2,
-        record_type: 'GRANT',
-        remark: `idempotency:${idempotencyKey} | test grant`,
-        balance_after: 2,
-        created_at: Math.floor(Date.now() / 1000),
-      };
-      mockPrisma.$queryRawUnsafe.mockResolvedValueOnce([mockItemRecord]);
 
       // 尝试发放2个道具，应该成功（当前2个 + 发放2个 = 4个 < 上限5个）
       const testData = { ...mockData, amount: 2 };
