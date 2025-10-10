@@ -66,8 +66,17 @@ export class PlayerItemService {
       now
     );
 
+    // 计算当天的时间范围（确保预检查和事务内检查使用相同的时间范围）
+    const currentDate = new Date();
+    const todayStart = Math.floor(
+      new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 0, 0, 0, 0).getTime() / 1000
+    );
+    const todayEnd = Math.floor(
+      new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59, 999).getTime() / 1000
+    );
+
     // 事务外预检查每日限制（避免事务隔离级别问题）
-    const preCheckResult = await this.preCheckDailyLimit(data);
+    const preCheckResult = await this.preCheckDailyLimit(data, todayStart, todayEnd);
     if (!preCheckResult.success) {
       return preCheckResult;
     }
@@ -220,6 +229,8 @@ export class PlayerItemService {
           data.item_id,
           data.amount,
           itemTemplate.daily_limit_max,
+          todayStart,
+          todayEnd,
           tx
         );
 
@@ -480,7 +491,9 @@ export class PlayerItemService {
       player_id: string;
       item_id: string;
       amount: number;
-    }
+    },
+    todayStart: number,
+    todayEnd: number
   ): Promise<{ success: boolean; message: string }> {
     // 检查道具模板的每日限制
     const itemTemplate = await this.prisma.itemTemplate.findFirst({
@@ -501,15 +514,6 @@ export class PlayerItemService {
     }
 
     if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
-      // 获取当前日期的开始和结束时间戳（秒级）
-      const now = new Date();
-      const todayStart = Math.floor(
-        new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000
-      );
-      const todayEnd = Math.floor(
-        new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000
-      );
-
       const todayGranted = await this.getPlayerItemAmountInTimeRange(
         data.merchant_id,
         data.app_id,
@@ -542,17 +546,10 @@ export class PlayerItemService {
     itemId: string,
     amount: number,
     dailyLimit: number,
+    todayStart: number,
+    todayEnd: number,
     tx: any
   ): Promise<{ success: boolean; message: string }> {
-    // 获取当前日期的开始和结束时间戳（秒级）
-    const now = new Date();
-    const todayStart = Math.floor(
-      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000
-    );
-    const todayEnd = Math.floor(
-      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000
-    );
-
     // 使用行锁查询今日已发放数量
     const todayGranted = await this.getPlayerItemAmountInTimeRangeWithLock(
       merchantId,
@@ -882,7 +879,7 @@ export class PlayerItemService {
               const unionQuery = `(${queries.join(") UNION ALL (")}) ORDER BY created_at DESC LIMIT 1`;
               const latestRecords = await this.prisma.$queryRawUnsafe<{remark: string, created_at: number}[]>(unionQuery);
             
-              if (latestRecords.length > 0) {
+              if (latestRecords && latestRecords.length > 0) {
                 const remark = latestRecords[0].remark;
                 if (remark && remark.startsWith('idempotency:')) {
                   const parts = remark.split(' | ');
