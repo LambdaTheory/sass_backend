@@ -502,6 +502,10 @@ export class PlayerItemService {
     endTime?: number,
     itemId?: string
   ): Promise<PlayerItem[]> {
+    // 确保当前月份的表存在
+    const currentTime = Math.floor(Date.now() / 1000);
+    await this.shardingService.ensureTablesExist(merchantId, appId, currentTime);
+
     const tables = await this.shardingService.getPlayerItemTables(
       appId,
       startTime,

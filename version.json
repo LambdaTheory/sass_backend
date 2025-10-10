@@ -1,12 +1,12 @@
 {
-  "version": "v1.2.0",
-  "description": "添加过期道具自动清理功能",
-  "date": "2025-09-25 14:57:30",
+  "version": "v1.2.1",
+  "description": "修复分片表不存在导致查询失败的问题",
+  "date": "2025-10-10 10:54:48",
   "changes": [
-    "新增过期道具自动清理定时任务，每5分钟检查并更新过期道具状态",
-    "创建cleanup-expired-items.ts脚本，自动将过期道具状态从USABLE更新为UNUSABLE",
-    "更新Docker定时任务配置，添加过期道具清理cron job",
-    "完善定时任务文档和日志记录功能",
-    "解决道具过期时间到了但状态未更新的问题"
+    "修复getPlayerItems方法中缺少表创建逻辑的问题",
+    "在查询玩家道具前确保当前月份的分片表存在",
+    "优化getPlayerItemTables方法，只返回实际存在的表",
+    "解决Table 'player_items_xxx_202510' doesn't exist错误",
+    "提高分片表查询的稳定性和容错性"
   ]
 }

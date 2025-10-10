@@ -45,7 +45,9 @@ export class ShardingService {
       }
     }
 
-    return Array.from(tables);
+    // 过滤出实际存在的表
+    const tableList = Array.from(tables);
+    return await this.filterExistingTables(tableList);
   }
 
   async getItemRecordTables(
