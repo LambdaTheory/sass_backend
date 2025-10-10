@@ -119,28 +119,6 @@ export class PlayerItemService {
       if (appData.status !== 1) {
         return {
           success: false,
-          message: "应用已被禁用，无法核销道具",
-        };
-      }
-
-      // 3. 检查应用是否被禁用
-      const appInfo = await tx.app.findFirst({
-        where: {
-          id: data.app_id,
-          merchant_id: data.merchant_id,
-        },
-      });
-
-      if (!appInfo) {
-        return {
-          success: false,
-          message: "应用不存在",
-        };
-      }
-
-      if (appInfo.status !== 1) {
-        return {
-          success: false,
           message: "应用已被禁用，无法发放道具",
         };
       }
@@ -227,28 +205,20 @@ export class PlayerItemService {
         }
       }
 
-      // 9. 检查每日限制
+      // 9. 在事务内再次检查每日限制（使用行锁确保并发安全）
       if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
-        // 获取当前日期的开始和结束时间戳（秒级）
-        const now = new Date();
-        const todayStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000);
-        const todayEnd = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000);
-
-        const todayGranted = await this.getPlayerItemAmountInTimeRange(
+        const dailyCheckResult = await this.checkDailyLimitWithLock(
           data.merchant_id,
           data.app_id,
           data.player_id,
           data.item_id,
-          todayStart,
-          todayEnd,
+          data.amount,
+          itemTemplate.daily_limit_max,
           tx
         );
 
-        if (todayGranted + data.amount > itemTemplate.daily_limit_max) {
-          return {
-            success: false,
-            message: `超出道具每日限制，今日已获得${todayGranted}个，限制${itemTemplate.daily_limit_max}个`,
-          };
+        if (!dailyCheckResult.success) {
+          return dailyCheckResult;
         }
       }
 
@@ -288,9 +258,9 @@ export class PlayerItemService {
         now
       );
 
-      const newItem = await tx.$queryRawUnsafe<PlayerItem[]>(
+      const newItem = await tx.$queryRawUnsafe(
         `SELECT * FROM \`${playerItemTableName}\` WHERE id = LAST_INSERT_ID()`
-      );
+      ) as PlayerItem[];
 
       const playerItem = newItem[0];
 
@@ -310,9 +280,9 @@ export class PlayerItemService {
         now
       );
 
-      const itemRecord = await tx.$queryRawUnsafe<any[]>(
+      const itemRecord = await tx.$queryRawUnsafe(
         `SELECT * FROM \`${itemRecordTableName}\` WHERE id = LAST_INSERT_ID()`
-      );
+      ) as any[];
 
       return {
         success: true,
@@ -491,6 +461,224 @@ export class PlayerItemService {
     } catch (error) {
       console.warn("查询时间范围内道具数量失败，返回0:", error);
       return 0;
+    }
+  }
+
+  /**
+   * 预检查每日限制（在事务外部执行）
+   */
+  private async preCheckDailyLimit(
+    data: {
+      merchant_id: string;
+      app_id: string;
+      player_id: string;
+      item_id: string;
+      amount: number;
+    }
+  ): Promise<{ success: boolean; message: string }> {
+    // 检查道具模板的每日限制
+    const itemTemplate = await this.prisma.itemTemplate.findFirst({
+      where: {
+        id: data.item_id,
+        merchant_id: data.merchant_id,
+        app_id: data.app_id,
+        is_active: "ACTIVE",
+        status: "NORMAL",
+      },
+    });
+
+    if (!itemTemplate) {
+      return {
+        success: false,
+        message: "道具模板不存在或已禁用",
+      };
+    }
+
+    if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
+      // 获取当前日期的开始和结束时间戳（秒级）
+      const now = new Date();
+      const todayStart = Math.floor(
+        new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000
+      );
+      const todayEnd = Math.floor(
+        new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000
+      );
+
+      const todayGranted = await this.getPlayerItemAmountInTimeRange(
+        data.merchant_id,
+        data.app_id,
+        data.player_id,
+        data.item_id,
+        todayStart,
+        todayEnd
+      );
+
+      if (todayGranted + data.amount > itemTemplate.daily_limit_max) {
+        return {
+          success: false,
+          message: `超出道具每日限制，今日已获得${todayGranted}个，限制${itemTemplate.daily_limit_max}个`,
+        };
+      }
+    }
+
+    return { success: true, message: "预检查通过" };
+  }
+
+  /**
+   * 在事务内检查每日限制（使用行锁确保并发安全）
+   */
+  private async checkDailyLimitWithLock(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    amount: number,
+    dailyLimit: number,
+    tx: any
+  ): Promise<{ success: boolean; message: string }> {
+    // 获取当前日期的开始和结束时间戳（秒级）
+    const now = new Date();
+    const todayStart = Math.floor(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime() / 1000
+    );
+    const todayEnd = Math.floor(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime() / 1000
+    );
+
+    // 使用行锁查询今日已发放数量
+    const todayGranted = await this.getPlayerItemAmountInTimeRangeWithLock(
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      todayStart,
+      todayEnd,
+      tx
+    );
+
+    if (todayGranted + amount > dailyLimit) {
+      return {
+        success: false,
+        message: `超出道具每日限制，今日已获得${todayGranted}个，限制${dailyLimit}个`,
+      };
+    }
+
+    return { success: true, message: "每日限制检查通过" };
+  }
+
+  /**
+   * 获取玩家在指定时间范围内获得某个道具的数量（带锁版本）
+   */
+  private async getPlayerItemAmountInTimeRangeWithLock(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    startTime: number,
+    endTime: number,
+    tx: any
+  ): Promise<number> {
+    const tables = await this.shardingService.getItemRecordTables(
+      appId,
+      startTime,
+      endTime
+    );
+
+    if (tables.length === 0) {
+      return 0;
+    }
+
+    // 获取实际存在的表
+    const allExistingTables = await this.shardingService.getAllItemRecordTables(
+      appId
+    );
+    const existingTables = tables.filter((table) =>
+      allExistingTables.includes(table)
+    );
+
+    if (existingTables.length === 0) {
+      return 0;
+    }
+
+    let totalAmount = 0;
+
+    // 对每个表分别查询并加锁，然后累加结果
+    for (const table of existingTables) {
+      try {
+        const result = await tx.$queryRawUnsafe(
+          `SELECT COALESCE(SUM(amount), 0) as total FROM \`${table}\` WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND created_at >= ? AND created_at <= ? AND record_type = 'GRANT' FOR UPDATE`,
+          merchantId,
+          appId,
+          playerId,
+          itemId,
+          startTime,
+          endTime
+        ) as { total: bigint }[];
+        
+        totalAmount += Number(result[0]?.total || 0);
+      } catch (error) {
+        // 如果表不存在或查询失败，继续下一个表
+        console.warn(`查询表 ${table} 失败，继续执行:`, error);
+      }
+    }
+
+    return totalAmount;
+  }
+
+  /**
+   * 根据幂等性键查询道具记录
+   */
+  private async getPlayerItemByIdempotencyKey(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    idempotencyKey: string,
+    tx?: any
+  ): Promise<{ playerItem?: PlayerItem; itemRecord?: any } | null> {
+    try {
+      // 查询流水记录
+      const allRecordTables = await this.shardingService.getAllItemRecordTables(appId);
+      
+      if (allRecordTables.length === 0) {
+        return null;
+      }
+
+      const queries = allRecordTables.map(
+        (table) =>
+          `SELECT * FROM \`${table}\` WHERE merchant_id = '${merchantId}' AND app_id = '${appId}' AND player_id = '${playerId}' AND item_id = '${itemId}' AND remark = 'idempotency:${idempotencyKey}'`
+      );
+
+      const unionQuery = queries.join(" UNION ALL ") + " LIMIT 1";
+      const client = tx || this.prisma;
+      const itemRecords = await client.$queryRawUnsafe(unionQuery) as any[];
+
+      if (itemRecords.length === 0) {
+        return null;
+      }
+
+      const itemRecord = itemRecords[0];
+
+      // 查询对应的道具记录（可能已经被消费或过期）
+      const playerItems = await this.getPlayerItems(
+        merchantId,
+        appId,
+        playerId,
+        undefined,
+        undefined,
+        itemId
+      );
+
+      // 返回最新的道具记录
+      const playerItem = playerItems.length > 0 ? playerItems[0] : undefined;
+
+      return {
+        playerItem,
+        itemRecord,
+      };
+    } catch (error) {
+      console.warn("查询幂等性记录失败:", error);
+      return null;
     }
   }
 

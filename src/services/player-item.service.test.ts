@@ -710,9 +710,6 @@ describe('PlayerItemService', () => {
     });
 
     it('应该正确检查每日发放上限，只统计GRANT类型的记录', async () => {
-      // Mock 幂等性检查
-      mockPrisma.$queryRawUnsafe.mockResolvedValue([]);
-      
       // Mock 应用查询 - 应用正常
       mockPrisma.app.findFirst.mockResolvedValue({
         id: 'app-1',
@@ -738,14 +735,14 @@ describe('PlayerItemService', () => {
       });
 
       // Mock getAllPlayerItemTables 和 getAllItemRecordTables
-       mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
-       mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
-       mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
       
-      // Mock 查询玩家当前持有的可用道具数量 - 0个
-       mockPrisma.$queryRawUnsafe
-         .mockResolvedValueOnce([]) // 幂等性检查
-         .mockResolvedValueOnce([{ grand_total: BigInt(1) }]); // 每日发放数量查询 - 已发放1个
+      // Mock 查询 - 预检查时已发放1个，应该失败
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // 幂等性检查
+        .mockResolvedValueOnce([{ grand_total: BigInt(1) }]); // 预检查：今日已发放1个
 
       const result = await service.grantPlayerItem(mockData, idempotencyKey);
 
@@ -764,6 +761,83 @@ describe('PlayerItemService', () => {
          typeof call[0] === 'string' && call[0].includes('amount > 0') && call[0].includes('item_records')
        );
        expect(hasAmountQuery).toBe(false);
+    });
+
+    it('应该防止通过多次小额发放绕过每日限制', async () => {
+      // 设置每日限制为3个
+      const dailyLimit = 3;
+      
+      // Mock 道具模板查询 - 设置每日发放上限为3
+      const itemTemplate = {
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: null,
+        total_limit: null,
+        daily_limit_max: dailyLimit,
+        expire_date: null,
+        expire_duration: null,
+      };
+
+      // Mock 其他必要的服务
+      mockPrisma.app.findFirst.mockResolvedValue({
+        id: 'app-1',
+        merchant_id: 'merchant-1',
+        status: 1,
+      });
+      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
+      mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+      
+      // 第一次发放：今日已发放0个，发放2个，应该成功
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // 幂等性检查
+        .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 预检查：今日已发放0个
+        .mockResolvedValueOnce([{ grand_total: BigInt(0) }]) // 事务内检查：今日已发放0个
+        .mockResolvedValueOnce([{ total: BigInt(0) }]) // 持有量检查
+        .mockResolvedValueOnce([{ total: BigInt(0) }]) // 总量检查
+        .mockResolvedValueOnce([{ id: 1 }]); // 插入player_item后的查询结果
+
+      // Mock 事务执行
+      mockPrisma.$executeRawUnsafe.mockResolvedValue(undefined);
+      
+      const firstResult = await service.grantPlayerItem(
+        { ...mockData, amount: 2 },
+        'first-grant-key'
+      );
+      
+      expect(firstResult.success).toBe(true);
+
+      // 重置 mock 调用记录
+      jest.clearAllMocks();
+      
+      // 重新设置基础mock
+      mockPrisma.app.findFirst.mockResolvedValue({
+        id: 'app-1',
+        merchant_id: 'merchant-1',
+        status: 1,
+      });
+      mockPrisma.itemTemplate.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue(itemTemplate);
+      mockShardingService.getItemRecordTables.mockResolvedValue(['item_records_202409']);
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // 第二次发放：今日已发放2个，再发放2个，应该失败（2+2=4 > 3）
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce([]) // 幂等性检查
+        .mockResolvedValueOnce([{ grand_total: BigInt(2) }]); // 预检查：今日已发放2个
+
+      const secondResult = await service.grantPlayerItem(
+        { ...mockData, amount: 2 },
+        'second-grant-key'
+      );
+      
+      expect(secondResult.success).toBe(false);
+      expect(secondResult.message).toBe('超出道具每日限制，今日已获得2个，限制3个');
     });
 
     it('应该正确将expire_duration从小时转换为秒', () => {
