@@ -4,21 +4,29 @@ export class ShardingService {
   constructor(private prisma: PrismaClient) {}
 
   // ==================== 表名计算 ====================
+  private normalizeToSeconds(timestamp?: number): number | undefined {
+    if (timestamp === undefined || timestamp === null) return undefined;
+    // 如果入参是毫秒(> 1e10)，转为秒
+    return timestamp > 1e10 ? Math.floor(timestamp / 1000) : timestamp;
+  }
 
   getPlayerItemTable(appId: string, timestamp?: number): string {
-    const date = timestamp ? new Date(timestamp * 1000) : new Date();
+    const ts = this.normalizeToSeconds(timestamp);
+    const date = ts ? new Date(ts * 1000) : new Date();
     const yearMonth = date.toISOString().slice(0, 7).replace("-", "");
     return `player_items_${appId}_${yearMonth}`;
   }
 
   getItemRecordTable(appId: string, timestamp?: number): string {
-    const date = timestamp ? new Date(timestamp * 1000) : new Date();
+    const ts = this.normalizeToSeconds(timestamp);
+    const date = ts ? new Date(ts * 1000) : new Date();
     const yearMonthDay = date.toISOString().slice(0, 10).replace(/-/g, "");
     return `item_records_${appId}_${yearMonthDay}`;
   }
 
   getItemLimitTable(appId: string, timestamp?: number): string {
-    const date = timestamp ? new Date(timestamp * 1000) : new Date();
+    const ts = this.normalizeToSeconds(timestamp);
+    const date = ts ? new Date(ts * 1000) : new Date();
     const yearMonthDay = date.toISOString().slice(0, 10).replace(/-/g, "");
     return `item_limits_${appId}_${yearMonthDay}`;
   }
@@ -37,11 +45,13 @@ export class ShardingService {
       const allTables = await this.getAllPlayerItemTables(appId);
       allTables.forEach(table => tables.add(table));
     } else {
-      const start = new Date(startTime * 1000);
-      const end = new Date(endTime * 1000);
+      const startSec = this.normalizeToSeconds(startTime)!;
+      const endSec = this.normalizeToSeconds(endTime)!;
+      const start = new Date(startSec * 1000);
+      const end = new Date(endSec * 1000);
 
       for (let d = new Date(start); d <= end; d.setMonth(d.getMonth() + 1)) {
-        tables.add(this.getPlayerItemTable(appId, d.getTime() / 1000));
+        tables.add(this.getPlayerItemTable(appId, Math.floor(d.getTime() / 1000)));
       }
     }
 
@@ -60,11 +70,13 @@ export class ShardingService {
     if (!startTime || !endTime) {
       tables.add(this.getItemRecordTable(appId));
     } else {
-      const start = new Date(startTime * 1000);
-      const end = new Date(endTime * 1000);
+      const startSec = this.normalizeToSeconds(startTime)!;
+      const endSec = this.normalizeToSeconds(endTime)!;
+      const start = new Date(startSec * 1000);
+      const end = new Date(endSec * 1000);
 
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        tables.add(this.getItemRecordTable(appId, d.getTime() / 1000));
+        tables.add(this.getItemRecordTable(appId, Math.floor(d.getTime() / 1000)));
       }
     }
 

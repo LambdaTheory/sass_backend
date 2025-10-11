@@ -26,7 +26,9 @@ export class ItemRecordService {
   // ==================== 创建道具流水 ====================
 
   async createItemRecord(data: Omit<ItemRecord, 'id'>): Promise<ItemRecord> {
-    const tableName = this.shardingService.getItemRecordTable(data.app_id, data.created_at);
+    // 归一化时间戳到秒：如果传入的是毫秒则转为秒
+    const createdAtSec = data.created_at > 1e10 ? Math.floor(data.created_at / 1000) : data.created_at;
+    const tableName = this.shardingService.getItemRecordTable(data.app_id, createdAtSec);
     
     const createSQL = `
       INSERT INTO \`${tableName}\` (
@@ -43,7 +45,7 @@ export class ItemRecordService {
       data.record_type,
       data.remark,
       data.balance_after,
-      data.created_at
+      createdAtSec
     );
     
     // 获取插入的记录
