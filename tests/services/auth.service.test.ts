@@ -107,7 +107,7 @@ describe('Auth Service', () => {
 
     it('应该在token和用户都有效时返回成功', async () => {
       const mockDecoded = { userId: 'user-123', username: 'test' };
-      const mockUser = { id: 'user-123', username: 'test', status: 1 };
+      const mockUser = { id: 'user-123', username: 'test', status: 1, user_type: 'SUPER_ADMIN' };
       
       mockJwt.verify.mockReturnValue(mockDecoded as any);
       mockPrisma.user.findUnique.mockResolvedValue(mockUser);
@@ -221,16 +221,22 @@ describe('Auth Service', () => {
     });
 
     it('应该在token验证成功时返回完整用户信息', async () => {
-      const mockDecoded = { userId: 'user-123', username: 'test' };
+      const mockDecoded = { userId: 'user-123', username: 'test', merchantId: 'merchant-123' };
       const mockUser = {
         id: 'user-123',
         username: 'test',
         user_type: 'REGULAR',
         status: 1
       };
+      const mockMerchant = {
+        id: 'merchant-123',
+        name: 'Test Merchant',
+        status: 1
+      };
       
       mockJwt.verify.mockReturnValue(mockDecoded as any);
       mockPrisma.user.findUnique.mockResolvedValue(mockUser);
+      mockPrisma.merchant.findUnique.mockResolvedValue(mockMerchant);
       
       const result = await validateTokenAndGetUserInfo('Bearer valid-token');
       

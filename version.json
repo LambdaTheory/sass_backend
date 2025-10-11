@@ -1,13 +1,14 @@
 {
-  "version": "v1.2.5",
-  "description": "修复每日限制检查测试中的mock设置问题",
-  "date": "2025-10-11 12:16:24",
+  "version": "v1.2.6",
+  "description": "修复测试失败问题，确保所有279个测试通过",
+  "date": "2025-10-11 17:21:30",
   "changes": [
-    "修复测试'应该防止通过多次小额发放绕过每日限制'中的mock设置问题",
-    "解决$queryRawUnsafe调用顺序与mock返回值不匹配的问题",
-    "分析并修正持有上限检查和总量检查被跳过时的调用顺序",
-    "确保每日限制检查在第二次发放时正确返回失败结果",
-    "清理调试代码，恢复正常的测试环境设置",
-    "验证所有相关测试通过，确保功能完整性"
+    "修复merchant-key.service.test.ts中的HMAC签名测试问题",
+    "将RSA签名mock改为HMAC签名mock，匹配实际实现",
+    "修复auth.service.ts中错误消息的格式问题（移除多余空格）",
+    "调整auth.service.ts中用户和商户验证的逻辑顺序",
+    "修复auth.service.test.ts中mock数据缺少必要字段的问题",
+    "为测试用户添加user_type字段，为REGULAR用户添加merchantId和商户mock",
+    "确保所有279个测试全部通过，提升代码质量和稳定性"
   ]
 }

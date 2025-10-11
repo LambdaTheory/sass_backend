@@ -43,17 +43,9 @@ describe('MerchantKeyService', () => {
   describe('generateMerchantKeys', () => {
     it('应该为商户生成并保存密钥对', async () => {
       const merchantId = 'test-merchant-id';
-      const mockKeyPair = {
-        publicKey: '-----BEGIN PUBLIC KEY-----\nMOCK_PUBLIC_KEY\n-----END PUBLIC KEY-----',
-        privateKey: '-----BEGIN PRIVATE KEY-----\nMOCK_PRIVATE_KEY\n-----END PRIVATE KEY-----'
-      };
-      const mockHash = 'mock-hash';
+      const mockHmacKey = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
 
-      mockCrypto.generateKeyPairSync.mockReturnValue(mockKeyPair as any);
-      mockCrypto.createHash.mockReturnValue({
-        update: jest.fn().mockReturnThis(),
-        digest: jest.fn().mockReturnValue(mockHash)
-      } as any);
+      (mockCrypto.randomBytes as jest.Mock).mockReturnValue(Buffer.from(mockHmacKey.substring(0, 64), 'hex'));
 
       jest.spyOn(Date, 'now').mockReturnValue(1234567890);
 
@@ -62,14 +54,13 @@ describe('MerchantKeyService', () => {
       expect(mockPrisma.merchant.update).toHaveBeenCalledWith({
         where: { id: merchantId },
         data: {
-          public_key: mockKeyPair.publicKey,
-          private_key_hash: mockHash,
+          hmac_key: mockHmacKey,
           key_created_at: BigInt(1234567890),
           key_status: 1
         }
       });
 
-      expect(result).toEqual(mockKeyPair);
+      expect(result).toEqual({ key: mockHmacKey });
     });
   });
 
@@ -150,7 +141,7 @@ describe('MerchantKeyService', () => {
   });
 
   describe('signPayload', () => {
-    it('应该使用私钥对payload进行签名', () => {
+    it('应该使用HMAC密钥对payload进行签名', () => {
       const payload = {
         merchant_id: 'test-merchant',
         timestamp: 1234567890,
@@ -158,20 +149,20 @@ describe('MerchantKeyService', () => {
         path: '/api/test',
         body_hash: 'hash'
       };
-      const privateKey = 'private-key';
-      const mockSignature = Buffer.from('mock-signature');
+      const hmacKey = 'test-hmac-key';
+      const mockHmac = {
+        update: jest.fn().mockReturnThis(),
+        digest: jest.fn().mockReturnValue('mock-signature-base64')
+      };
 
-      mockCrypto.sign.mockReturnValue(mockSignature as any);
+      (mockCrypto.createHmac as jest.Mock).mockReturnValue(mockHmac);
 
-      const result = merchantKeyService.signPayload(payload, privateKey);
+      const result = merchantKeyService.signPayload(payload, hmacKey);
 
-      expect(mockCrypto.sign).toHaveBeenCalledWith(
-        'sha256',
-        Buffer.from(JSON.stringify(payload)),
-        privateKey
-      );
-
-      expect(result).toBe(mockSignature.toString('base64'));
+      expect(mockCrypto.createHmac).toHaveBeenCalledWith('sha256', hmacKey);
+      expect(mockHmac.update).toHaveBeenCalledWith(JSON.stringify(payload));
+      expect(mockHmac.digest).toHaveBeenCalledWith('base64');
+      expect(result).toBe('mock-signature-base64');
     });
   });
 
@@ -202,11 +193,12 @@ describe('MerchantKeyService', () => {
       const path = '/api/test';
       const body = {};
       const merchantId = 'test-merchant';
+      const hmacKey = 'test-hmac-key';
 
       mockPrisma.merchant.findMany.mockResolvedValue([
         {
           id: merchantId,
-          public_key: 'public-key'
+          hmac_key: hmacKey
         }
       ] as any);
 
@@ -215,7 +207,11 @@ describe('MerchantKeyService', () => {
         digest: jest.fn().mockReturnValue('body-hash')
       } as any);
 
-      mockCrypto.verify.mockReturnValue(true as any);
+      const mockHmac = {
+        update: jest.fn().mockReturnThis(),
+        digest: jest.fn().mockReturnValue('test-signature')
+      };
+      (mockCrypto.createHmac as jest.Mock).mockReturnValue(mockHmac);
 
       const result = await merchantKeyService.verifySignature(
         signature,
@@ -239,7 +235,7 @@ describe('MerchantKeyService', () => {
       mockPrisma.merchant.findMany.mockResolvedValue([
         {
           id: 'test-merchant',
-          public_key: 'public-key'
+          hmac_key: 'test-hmac-key'
         }
       ] as any);
 
@@ -248,7 +244,11 @@ describe('MerchantKeyService', () => {
         digest: jest.fn().mockReturnValue('body-hash')
       } as any);
 
-      mockCrypto.verify.mockReturnValue(false as any);
+      const mockHmac = {
+        update: jest.fn().mockReturnThis(),
+        digest: jest.fn().mockReturnValue('different-signature')
+      };
+      (mockCrypto.createHmac as jest.Mock).mockReturnValue(mockHmac);
 
       const result = await merchantKeyService.verifySignature(
         signature,

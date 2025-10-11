@@ -70,6 +70,18 @@ export const validateToken = async (
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
     });
+
+    // 检查用户是否存在且状态有效
+    if (!user || user.status !== 1) {
+      return {
+        success: false,
+        error: {
+          code: 401,
+          message: "用户不存在或已被禁用",
+        },
+      };
+    }
+
     let merchant: any = null;
     const role = user?.user_type;
     if (role !== "SUPER_ADMIN") {
@@ -81,20 +93,10 @@ export const validateToken = async (
           success: false,
           error: {
             code: 401,
-            message: " 商户不存在或已被禁用",
+            message: "商户不存在或已被禁用",
           },
         };
       }
-    }
-    // 检查用户是否存在且状态有效
-    if (!user || user.status !== 1) {
-      return {
-        success: false,
-        error: {
-          code: 401,
-          message: "用户不存在或已被禁用",
-        },
-      };
     }
 
     return {
