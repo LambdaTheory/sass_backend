@@ -48,6 +48,7 @@ export class PlayerItemService {
     itemRecord?: any;
     message: string;
   }> {
+
     const now = Math.floor(Date.now() / 1000);
 
     // 确保分表存在
@@ -75,10 +76,22 @@ export class PlayerItemService {
       new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59, 999).getTime() / 1000
     );
 
-    // 事务外预检查每日限制（避免事务隔离级别问题）
-    const preCheckResult = await this.preCheckDailyLimit(data, todayStart, todayEnd);
-    if (!preCheckResult.success) {
-      return preCheckResult;
+    // 先检查道具模板是否存在和有效（避免无效请求进入事务）
+    const itemTemplate = await this.prisma.itemTemplate.findFirst({
+      where: {
+        id: data.item_id,
+        merchant_id: data.merchant_id,
+        app_id: data.app_id,
+        is_active: "ACTIVE",
+        status: "NORMAL",
+      },
+    });
+
+    if (!itemTemplate) {
+      return {
+        success: false,
+        message: "道具模板不存在或已禁用",
+      };
     }
 
     // 使用事务确保数据一致性
@@ -481,60 +494,7 @@ export class PlayerItemService {
     }
   }
 
-  /**
-   * 预检查每日限制（在事务外部执行）
-   */
-  private async preCheckDailyLimit(
-    data: {
-      merchant_id: string;
-      app_id: string;
-      player_id: string;
-      item_id: string;
-      amount: number;
-    },
-    todayStart: number,
-    todayEnd: number
-  ): Promise<{ success: boolean; message: string }> {
-    // 检查道具模板的每日限制
-    const itemTemplate = await this.prisma.itemTemplate.findFirst({
-      where: {
-        id: data.item_id,
-        merchant_id: data.merchant_id,
-        app_id: data.app_id,
-        is_active: "ACTIVE",
-        status: "NORMAL",
-      },
-    });
 
-    if (!itemTemplate) {
-      return {
-        success: false,
-        message: "道具模板不存在或已禁用",
-      };
-    }
-
-    if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
-      const todayGranted = await this.getPlayerItemAmountInTimeRange(
-        data.merchant_id,
-        data.app_id,
-        data.player_id,
-        data.item_id,
-        todayStart,
-        todayEnd
-      );
-
-
-
-      if (todayGranted + data.amount > itemTemplate.daily_limit_max) {
-        return {
-          success: false,
-          message: `超出道具每日限制，今日已获得${todayGranted}个，限制${itemTemplate.daily_limit_max}个`,
-        };
-      }
-    }
-
-    return { success: true, message: "预检查通过" };
-  }
 
   /**
    * 在事务内检查每日限制（使用行锁确保并发安全）
