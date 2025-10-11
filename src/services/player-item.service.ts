@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { ShardingService } from "./sharding.service";
 
 // 玩家道具类型定义
@@ -94,38 +94,28 @@ export class PlayerItemService {
       };
     }
 
-    // 使用事务确保数据一致性
+    // 使用事务确保数据一致性（在事务启动前设置隔离级别）
     return await this.prisma.$transaction(async (tx) => {
-      // 确保事务隔离级别为 REPEATABLE READ，以获得更强的行/间隙锁保障
-      try {
-        await tx.$executeRawUnsafe('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-      } catch (e) {
-        // 兼容不同数据库配置，失败时继续执行
-      }
       // 1. 检查幂等性 - 查询是否已经有相同的流水记录
       // 需要查询所有可能的表，因为幂等性键可能在之前的表中
       const allRecordTables = await this.shardingService.getAllItemRecordTables(
         data.app_id
       );
+      // 过滤掉不存在的表，避免 1146 错误
+      const existingRecordTables = await this.shardingService.filterExistingTables(allRecordTables);
       let existingRecord: any[] = [];
 
       // 如果没有任何表，则跳过幂等性检查
-      if (allRecordTables.length > 0) {
+      if (existingRecordTables.length > 0) {
         // 构建查询所有表的UNION语句
-        const queries = allRecordTables.map(
+        const queries = existingRecordTables.map(
           (table) =>
             `SELECT id FROM \`${table}\` WHERE merchant_id = '${data.merchant_id}' AND app_id = '${data.app_id}' AND player_id = '${data.player_id}' AND item_id = '${data.item_id}' AND remark = 'idempotency:${idempotencyKey}'`
         );
 
         const unionQuery = queries.join(" UNION ALL ") + " LIMIT 1";
 
-        try {
-          existingRecord = await tx.$queryRawUnsafe<any[]>(unionQuery);
-        } catch (error) {
-          // 如果查询失败（比如表不存在），继续执行，不影响正常流程
-          console.warn("幂等性检查查询失败，继续执行:", error);
-          existingRecord = [];
-        }
+        existingRecord = await tx.$queryRawUnsafe<any[]>(unionQuery);
       }
 
       if (existingRecord.length > 0) {
@@ -326,7 +316,7 @@ export class PlayerItemService {
         itemRecord: itemRecord[0],
         message: "道具发放成功",
       };
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 
   /**
