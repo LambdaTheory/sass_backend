@@ -7,6 +7,7 @@ const mockPrisma = {
     findMany: jest.fn(),
     findFirst: jest.fn(),
     create: jest.fn(),
+    delete: jest.fn(),
   },
   app: {
     findMany: jest.fn(),
@@ -54,6 +55,18 @@ describe('ShardingService', () => {
     it('should generate correct table name without timestamp', () => {
       const tableName = shardingService.getItemRecordTable('test-app-id');
       expect(tableName).toMatch(/^item_records_test-app-id_\d{8}$/);
+    });
+  });
+
+  describe('getItemTotalLimitTable', () => {
+    it('should generate correct table name', () => {
+      const tableName = shardingService.getItemTotalLimitTable('test-app-id');
+      expect(tableName).toBe('item_total_limits_test-app-id');
+    });
+
+    it('should handle app id with special characters', () => {
+      const tableName = shardingService.getItemTotalLimitTable('test-app-id-123');
+      expect(tableName).toBe('item_total_limits_test-app-id-123');
     });
   });
 
@@ -257,6 +270,74 @@ describe('ShardingService', () => {
     });
   });
 
+  describe('createItemTotalLimitTable', () => {
+    it('should not create table if it already exists', async () => {
+      mockPrisma.shardingMetadata.findFirst = jest.fn().mockResolvedValue({ id: 'existing' });
+      mockPrisma.$queryRawUnsafe = jest.fn().mockResolvedValue([{ 'Tables_in_daojusaas (item_total_limits_app-id)': 'item_total_limits_app-id' }]);
+      
+      await shardingService.createItemTotalLimitTable('merchant-id', 'app-id');
+      
+      expect(mockPrisma.$executeRawUnsafe).not.toHaveBeenCalled();
+      expect(mockPrisma.shardingMetadata.create).not.toHaveBeenCalled();
+    });
+
+    it('should recreate table if metadata exists but table does not exist', async () => {
+      const existingMetadata = { id: 'existing-id' };
+      mockPrisma.shardingMetadata.findFirst = jest.fn().mockResolvedValue(existingMetadata);
+      mockPrisma.$queryRawUnsafe = jest.fn().mockResolvedValue([]); // 表不存在
+      mockPrisma.shardingMetadata.delete = jest.fn().mockResolvedValue({});
+      mockPrisma.$executeRawUnsafe = jest.fn().mockResolvedValue(undefined);
+      mockPrisma.shardingMetadata.create = jest.fn().mockResolvedValue({});
+      
+      await shardingService.createItemTotalLimitTable('merchant-id', 'app-id');
+      
+      expect(mockPrisma.shardingMetadata.delete).toHaveBeenCalledWith({ where: { id: 'existing-id' } });
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_total_limits_app-id`')
+      );
+      expect(mockPrisma.shardingMetadata.create).toHaveBeenCalled();
+    });
+
+    it('should recreate table if table check fails', async () => {
+      const existingMetadata = { id: 'existing-id' };
+      mockPrisma.shardingMetadata.findFirst = jest.fn().mockResolvedValue(existingMetadata);
+      mockPrisma.$queryRawUnsafe = jest.fn().mockRejectedValue(new Error('Table check failed'));
+      mockPrisma.shardingMetadata.delete = jest.fn().mockResolvedValue({});
+      mockPrisma.$executeRawUnsafe = jest.fn().mockResolvedValue(undefined);
+      mockPrisma.shardingMetadata.create = jest.fn().mockResolvedValue({});
+      
+      await shardingService.createItemTotalLimitTable('merchant-id', 'app-id');
+      
+      expect(mockPrisma.shardingMetadata.delete).toHaveBeenCalledWith({ where: { id: 'existing-id' } });
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_total_limits_app-id`')
+      );
+      expect(mockPrisma.shardingMetadata.create).toHaveBeenCalled();
+    });
+
+    it('should create table and metadata if not exists', async () => {
+      mockPrisma.shardingMetadata.findFirst = jest.fn().mockResolvedValue(null);
+      mockPrisma.$executeRawUnsafe = jest.fn().mockResolvedValue(undefined);
+      mockPrisma.shardingMetadata.create = jest.fn().mockResolvedValue({});
+      
+      await shardingService.createItemTotalLimitTable('merchant-id', 'app-id');
+      
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_total_limits_app-id`')
+      );
+      expect(mockPrisma.shardingMetadata.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          table_type: 'ITEM_TOTAL_LIMITS',
+          merchant_id: 'merchant-id',
+          app_id: 'app-id',
+          table_name: 'item_total_limits_app-id',
+          time_range: 'permanent',
+          status: 'ACTIVE',
+        })
+      });
+    });
+  });
+
   describe('ensureTablesExist', () => {
     beforeEach(() => {
       mockPrisma.shardingMetadata.findFirst = jest.fn().mockResolvedValue(null);
@@ -284,15 +365,20 @@ describe('ShardingService', () => {
         expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_limits_app-id_20240916`')
       );
       
-      // 指定时间戳时应该创建3个表
-      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(3);
+      // 应该创建总发放量表 (永久)
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_total_limits_app-id`')
+      );
+      
+      // 指定时间戳时应该创建4个表
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(4);
     });
 
     it('should create tables for current time and tomorrow when no timestamp provided', async () => {
       await shardingService.ensureTablesExist('merchant-id', 'app-id');
       
-      // 应该创建当前时间的3个表和明天的2个表（流水表和配额表）
-      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(5);
+      // 应该创建当前时间的4个表和明天的2个表（流水表和配额表）
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(6);
     });
   });
 });

@@ -210,22 +210,21 @@ export class PlayerItemService {
         }
       }
 
-      // 8. 检查发放限制
+      // 8. 检查总发放限制（使用原子更新确保并发安全）
       if (itemTemplate.total_limit && itemTemplate.total_limit > 0) {
-        // 查询已发放总数
-        const grantedCount = await this.getPlayerItemTotalAmount(
+        const totalQuotaResult = await this.reserveTotalQuotaWithCounter(
           data.merchant_id,
           data.app_id,
           data.player_id,
           data.item_id,
+          data.amount,
+          itemTemplate.total_limit,
+          now,
           tx
         );
 
-        if (grantedCount + data.amount > itemTemplate.total_limit) {
-          return {
-            success: false,
-            message: `超出道具总限制，当前已有${grantedCount}个，限制${itemTemplate.total_limit}个`,
-          };
+        if (!totalQuotaResult.success) {
+          return totalQuotaResult;
         }
       }
 
@@ -387,6 +386,70 @@ export class PlayerItemService {
     }
 
     return { success: true, message: '每日配额预留成功' };
+  }
+
+  private async reserveTotalQuotaWithCounter(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    amount: number,
+    totalLimit: number,
+    nowSec: number,
+    tx: any
+  ): Promise<{ success: boolean; message: string }> {
+    const totalLimitTable = this.shardingService.getItemTotalLimitTable(appId);
+
+    // 确保有一行记录（如果不存在则插入），并更新总限制到最新值
+    await tx.$executeRawUnsafe(
+      `INSERT IGNORE INTO \`${totalLimitTable}\` (merchant_id, app_id, player_id, item_id, total_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      totalLimit,
+      nowSec,
+      nowSec
+    );
+
+    // 无条件更新总限制为模板提供值，以支持动态调整
+    await tx.$executeRawUnsafe(
+      `UPDATE \`${totalLimitTable}\` SET total_limit = ?, updated_at = ?
+       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?`,
+      totalLimit,
+      nowSec,
+      merchantId,
+      appId,
+      playerId,
+      itemId
+    );
+
+    // 原子预留：仅当 granted + amount <= total_limit 时增加 granted
+    const affected = await tx.$executeRawUnsafe(
+      `UPDATE \`${totalLimitTable}\`
+       SET granted = granted + ?, updated_at = ?
+       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?
+         AND granted + ? <= total_limit`,
+      amount,
+      nowSec,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      amount
+    );
+
+    // MySQL 在 UPDATE 返回影响行数；Prisma $executeRawUnsafe 返回影响数
+    const ok = typeof affected === 'number' ? affected === 1 : true; // 部分驱动返回空，视为成功
+    if (!ok) {
+      return {
+        success: false,
+        message: `超出道具总限制，无法发放 ${amount} 个（达到或超过 ${totalLimit}）`,
+      };
+    }
+
+    return { success: true, message: '总配额预留成功' };
   }
 
   /**

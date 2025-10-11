@@ -161,6 +161,7 @@ enum TableType {
   PLAYER_ITEMS
   ITEM_RECORDS
   ITEM_LIMITS
+  ITEM_TOTAL_LIMITS
 }
 
 enum ShardingStatus {

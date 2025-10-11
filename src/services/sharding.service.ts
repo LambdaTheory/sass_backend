@@ -31,6 +31,10 @@ export class ShardingService {
     return `item_limits_${appId}_${yearMonthDay}`;
   }
 
+  getItemTotalLimitTable(appId: string): string {
+    return `item_total_limits_${appId}`;
+  }
+
   // ==================== 获取查询表名列表 ====================
 
   async getPlayerItemTables(
@@ -324,6 +328,73 @@ export class ShardingService {
     });
   }
 
+  async createItemTotalLimitTable(
+    merchantId: string,
+    appId: string
+  ): Promise<void> {
+    const tableName = this.getItemTotalLimitTable(appId);
+    console.log(`检查总发放量计数表是否存在: ${tableName}`);
+
+    // 检查元数据中是否存在
+    const existing = await this.prisma.shardingMetadata.findFirst({ where: { table_name: tableName } });
+    if (existing) {
+      console.log(`总发放量计数表元数据已存在: ${tableName}`);
+      // 再检查表是否真的存在
+      try {
+        const result = await this.prisma.$queryRawUnsafe<any[]>(`SHOW TABLES LIKE '${tableName}'`);
+        if (result && result.length > 0) {
+          console.log(`总发放量计数表确实存在: ${tableName}`);
+          return;
+        } else {
+          console.log(`总发放量计数表元数据存在但表不存在，重新创建: ${tableName}`);
+          // 删除错误的元数据记录
+          await this.prisma.shardingMetadata.delete({ where: { id: existing.id } });
+        }
+      } catch (error) {
+        console.log(`总发放量计数表元数据存在但表检查失败，重新创建: ${tableName}`);
+        // 删除错误的元数据记录
+        await this.prisma.shardingMetadata.delete({ where: { id: existing.id } });
+      }
+    }
+
+    console.log(`开始创建总发放量计数表: ${tableName}`);
+    const createTableSQL = `
+      CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        merchant_id VARCHAR(36) NOT NULL,
+        app_id VARCHAR(36) NOT NULL,
+        player_id VARCHAR(100) NOT NULL,
+        item_id VARCHAR(30) NOT NULL,
+        total_limit INT NOT NULL,
+        granted INT NOT NULL DEFAULT 0,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_total_quota (merchant_id, app_id, player_id, item_id),
+        INDEX idx_app_player (app_id, player_id),
+        INDEX idx_item (item_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `;
+
+    await this.prisma.$executeRawUnsafe(createTableSQL);
+    console.log(`总发放量计数表创建成功: ${tableName}`);
+
+    // 记录元数据
+    await this.prisma.shardingMetadata.create({
+      data: {
+        id: this.generateUUID(),
+        table_type: "ITEM_TOTAL_LIMITS",
+        merchant_id: merchantId,
+        app_id: appId,
+        table_name: tableName,
+        time_range: "permanent", // 总发放量表是永久的，不按时间分片
+        status: "ACTIVE",
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+      },
+    });
+  }
+
   // ==================== 自动建表任务 ====================
 
   async ensureTablesExist(merchantId: string, appId: string, timestamp?: number): Promise<void> {
@@ -348,6 +419,10 @@ export class ShardingService {
       const targetLimitDayStr = itemLimitTable.split('_').pop()!;
       console.log(`创建每日配额表: ${itemLimitTable}`);
       await this.createItemLimitTable(merchantId, appId, targetLimitDayStr);
+
+      // 确保总发放量计数表存在
+      console.log(`创建总发放量计数表`);
+      await this.createItemTotalLimitTable(merchantId, appId);
 
       // 如果没有传入时间戳，还需要确保明天的流水表存在
       if (!timestamp) {

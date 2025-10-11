@@ -916,6 +916,168 @@ describe('PlayerItemService', () => {
       expect(secondResult.message).toContain('超出道具每日限制');
     });
 
+    it('应该在超出总发放限制时返回错误', async () => {
+      // Mock getAllItemRecordTables 以触发幂等性检查
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // Mock 道具模板查询 - 设置总发放限制为5
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: null,
+        total_limit: 5, // 总发放限制为5
+        daily_limit_max: null,
+        expire_date: null,
+        expire_duration: null,
+      });
+
+      // Mock getItemTotalLimitTable
+      mockShardingService.getItemTotalLimitTable = jest.fn().mockReturnValue('item_total_limits_app-1');
+
+      // Mock 事务
+      const mockTx = {
+        $executeRawUnsafe: jest.fn()
+          .mockResolvedValueOnce(undefined) // INSERT IGNORE
+          .mockResolvedValueOnce(undefined) // UPDATE total_limit
+          .mockResolvedValueOnce(0), // UPDATE granted - 返回0表示更新失败（超出限制）
+        $queryRawUnsafe: jest.fn()
+          .mockResolvedValueOnce([]), // 幂等性检查
+        app: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'app-1',
+            merchant_id: 'merchant-1',
+            status: 1,
+          }),
+        },
+        itemTemplate: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            merchant_id: 'merchant-1',
+            app_id: 'app-1',
+            is_active: 'ACTIVE',
+            status: 'NORMAL',
+            limit_max: null,
+            total_limit: 5,
+            daily_limit_max: null,
+            expire_date: null,
+            expire_duration: null,
+          }),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+
+      mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => {
+        return await callback(mockTx);
+      });
+
+      // 尝试发放2个道具，应该失败（假设已发放4个）
+      const testData = { ...mockData, amount: 2 };
+      const result = await service.grantPlayerItem(testData, idempotencyKey);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('超出道具总限制');
+    });
+
+    it('应该在总发放限制内成功发放道具', async () => {
+      // Mock getAllItemRecordTables 以触发幂等性检查
+      mockShardingService.getAllItemRecordTables.mockResolvedValue(['item_records_202409']);
+      
+      // Mock 道具模板查询 - 设置总发放限制为10
+      mockPrisma.itemTemplate.findFirst.mockResolvedValue({
+        id: 'item-1',
+        merchant_id: 'merchant-1',
+        app_id: 'app-1',
+        is_active: 'ACTIVE',
+        status: 'NORMAL',
+        limit_max: null,
+        total_limit: 10, // 总发放限制为10
+        daily_limit_max: null,
+        expire_date: null,
+        expire_duration: null,
+      });
+
+      // Mock getItemTotalLimitTable
+      mockShardingService.getItemTotalLimitTable = jest.fn().mockReturnValue('item_total_limits_app-1');
+
+      // Mock 事务
+      const mockTx = {
+        $executeRawUnsafe: jest.fn()
+          .mockResolvedValueOnce(undefined) // INSERT IGNORE
+          .mockResolvedValueOnce(undefined) // UPDATE total_limit
+          .mockResolvedValueOnce(1) // UPDATE granted - 返回1表示更新成功
+          .mockResolvedValueOnce(undefined) // INSERT INTO player_items
+          .mockResolvedValueOnce(undefined), // INSERT INTO item_records
+        $queryRawUnsafe: jest.fn()
+          .mockResolvedValueOnce([]) // 幂等性检查
+          .mockResolvedValueOnce([{ total: 0 }]) // 持有上限检查
+          .mockResolvedValueOnce([{ grand_total: 0 }]) // 总量检查
+          .mockResolvedValueOnce([{ // 查询新插入的道具记录
+            id: 1,
+            merchant_id: 'merchant-1',
+            app_id: 'app-1',
+            player_id: 'player-1',
+            item_id: 'item-1',
+            amount: 3,
+            expire_time: null,
+            obtain_time: Math.floor(Date.now() / 1000),
+            status: 'USABLE',
+          }])
+          .mockResolvedValueOnce([{ // 查询新插入的流水记录
+            id: 1,
+            merchant_id: 'merchant-1',
+            app_id: 'app-1',
+            player_id: 'player-1',
+            item_id: 'item-1',
+            amount: 3,
+            record_type: 'GRANT',
+            remark: `idempotency:${idempotencyKey} | test grant`,
+            balance_after: 3,
+            created_at: Math.floor(Date.now() / 1000),
+          }]),
+        app: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'app-1',
+            merchant_id: 'merchant-1',
+            status: 1,
+          }),
+        },
+        itemTemplate: {
+          findFirst: jest.fn().mockResolvedValue({
+            id: 'item-1',
+            merchant_id: 'merchant-1',
+            app_id: 'app-1',
+            is_active: 'ACTIVE',
+            status: 'NORMAL',
+            limit_max: null,
+            total_limit: 10,
+            daily_limit_max: null,
+            expire_date: null,
+            expire_duration: null,
+          }),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+
+      // Mock getAllPlayerItemTables
+      mockShardingService.getAllPlayerItemTables.mockResolvedValue(['player_items_202409']);
+
+      mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => {
+        return await callback(mockTx);
+      });
+
+      // 发放3个道具，应该成功
+      const testData = { ...mockData, amount: 3 };
+      const result = await service.grantPlayerItem(testData, idempotencyKey);
+
+      expect(result.success).toBe(true);
+      expect(result.message).toBe('道具发放成功');
+      expect(result.playerItem).toBeDefined();
+      expect(result.itemRecord).toBeDefined();
+    });
+
     it('应该正确将expire_duration从小时转换为秒', () => {
       // 这是一个简单的单元测试，验证时间转换逻辑
       const now = Math.floor(Date.now() / 1000);
