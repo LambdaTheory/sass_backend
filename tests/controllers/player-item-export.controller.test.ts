@@ -12,6 +12,7 @@ const mockPrisma = {
 
 const mockShardingService = {
   getItemRecordTables: jest.fn(),
+  filterExistingTables: jest.fn(),
 } as unknown as jest.Mocked<ShardingService>;
 
 describe('PlayerItemExportService', () => {
@@ -20,6 +21,7 @@ describe('PlayerItemExportService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     exportService = new PlayerItemExportService(mockPrisma as any, mockShardingService);
+    mockShardingService.filterExistingTables.mockImplementation(async (tables: string[]) => tables);
   });
 
   describe('exportPlayerItemRecords', () => {

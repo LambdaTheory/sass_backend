@@ -236,9 +236,8 @@ export class MerchantStatisticsService {
       return 0;
     }
 
-    // 获取实际存在的表
-    const allExistingTables = await this.shardingService.getAllItemRecordTables(appId);
-    const existingTables = tables.filter(table => allExistingTables.includes(table));
+    // 过滤出实际存在的表
+    const existingTables = await this.shardingService.filterExistingTables(tables);
 
     if (existingTables.length === 0) {
       return 0;

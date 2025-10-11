@@ -92,8 +92,15 @@ export class PlayerItemExportService {
 
     const whereClause = conditions.join(' AND ');
 
+    // 过滤出实际存在的表
+    const existingTables = await this.shardingService.filterExistingTables(tables);
+
+    if (existingTables.length === 0) {
+      return [];
+    }
+
     // 构建UNION查询所有相关表
-    const queries = tables.map(table => 
+    const queries = existingTables.map(table => 
       `SELECT * FROM \`${table}\` WHERE ${whereClause}`
     );
 

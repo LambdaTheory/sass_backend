@@ -461,13 +461,8 @@ export class PlayerItemService {
       return 0;
     }
 
-    // 获取实际存在的表
-    const allExistingTables = await this.shardingService.getAllItemRecordTables(
-      appId
-    );
-    const existingTables = tables.filter((table) =>
-      allExistingTables.includes(table)
-    );
+    // 过滤出实际存在的表
+    const existingTables = await this.shardingService.filterExistingTables(tables);
 
     if (existingTables.length === 0) {
       return 0;
@@ -553,13 +548,8 @@ export class PlayerItemService {
       return 0;
     }
 
-    // 获取实际存在的表
-    const allExistingTables = await this.shardingService.getAllItemRecordTables(
-      appId
-    );
-    const existingTables = tables.filter((table) =>
-      allExistingTables.includes(table)
-    );
+    // 过滤出实际存在的表
+    const existingTables = await this.shardingService.filterExistingTables(tables);
 
     if (existingTables.length === 0) {
       return 0;
@@ -823,11 +813,8 @@ export class PlayerItemService {
           const recordTables = await this.shardingService.getAllItemRecordTables(appId);
           
           if (recordTables.length > 0) {
-            // 获取实际存在的表
-            const allExistingTables = await this.shardingService.getAllItemRecordTables(appId);
-            const existingTables = recordTables.filter((table) =>
-              allExistingTables.includes(table)
-            );
+            // 过滤出实际存在的表
+            const existingTables = await this.shardingService.filterExistingTables(recordTables);
             
             if (existingTables.length > 0) {
               // 构建查询最新流水记录的UNION语句

@@ -28,6 +28,7 @@ const mockShardingService = {
   getAllItemRecordTables: jest.fn(),
   ensureTablesExist: jest.fn(),
   getItemRecordTables: jest.fn(),
+  filterExistingTables: jest.fn(),
 } as unknown as ShardingService;
 
 describe('PlayerItemService - Daily Limit Fix', () => {
@@ -44,6 +45,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
     (mockShardingService.getAllItemRecordTables as jest.Mock).mockReturnValue(['item_record_0']);
     (mockShardingService.ensureTablesExist as jest.Mock).mockResolvedValue(undefined);
     (mockShardingService.getItemRecordTables as jest.Mock).mockResolvedValue(['item_record_0']);
+    (mockShardingService.filterExistingTables as jest.Mock).mockImplementation(async (tables: string[]) => tables);
   });
 
   describe('正常分批发放不应超过每日限制', () => {
