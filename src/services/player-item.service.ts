@@ -96,6 +96,12 @@ export class PlayerItemService {
 
     // 使用事务确保数据一致性
     return await this.prisma.$transaction(async (tx) => {
+      // 确保事务隔离级别为 REPEATABLE READ，以获得更强的行/间隙锁保障
+      try {
+        await tx.$executeRawUnsafe('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+      } catch (e) {
+        // 兼容不同数据库配置，失败时继续执行
+      }
       // 1. 检查幂等性 - 查询是否已经有相同的流水记录
       // 需要查询所有可能的表，因为幂等性键可能在之前的表中
       const allRecordTables = await this.shardingService.getAllItemRecordTables(

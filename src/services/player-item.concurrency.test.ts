@@ -29,6 +29,7 @@ describe('PlayerItemService - 并发安全测试', () => {
       getAllItemRecordTables: jest.fn().mockResolvedValue(['item_records_202410']),
       getAllPlayerItemTables: jest.fn().mockResolvedValue(['player_items_202410']),
       getItemRecordTables: jest.fn().mockResolvedValue(['item_records_202410']),
+      filterExistingTables: jest.fn().mockImplementation(async (tables: string[]) => tables),
     };
 
     // 创建服务实例
