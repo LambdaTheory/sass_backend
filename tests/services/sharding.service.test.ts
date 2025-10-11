@@ -279,15 +279,20 @@ describe('ShardingService', () => {
         expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_records_app-id_20240916`')
       );
       
-      // 不应该创建明天的表
-      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(2);
+      // 应该创建每日配额表 (按日)
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('CREATE TABLE IF NOT EXISTS `item_limits_app-id_20240916`')
+      );
+      
+      // 指定时间戳时应该创建3个表
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(3);
     });
 
     it('should create tables for current time and tomorrow when no timestamp provided', async () => {
       await shardingService.ensureTablesExist('merchant-id', 'app-id');
       
-      // 应该创建当前时间的表和明天的流水表
-      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(3);
+      // 应该创建当前时间的3个表和明天的2个表（流水表和配额表）
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledTimes(5);
     });
   });
 });

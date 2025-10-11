@@ -26,9 +26,11 @@ describe('PlayerItemService', () => {
       ensureTablesExist: jest.fn(),
       getPlayerItemTable: jest.fn(),
       getItemRecordTable: jest.fn(),
-      getAllItemRecordTables: jest.fn(),
+      getAllItemRecordTables: jest.fn().mockResolvedValue(['item_records_202409']),
       getAllPlayerItemTables: jest.fn(),
       getItemRecordTables: jest.fn(),
+      getItemLimitTable: jest.fn().mockReturnValue('item_limits_app-1_20241011'),
+      filterExistingTables: jest.fn().mockImplementation(async (tables: string[]) => tables),
     };
 
     // 创建服务实例
@@ -161,7 +163,9 @@ describe('PlayerItemService', () => {
         },
       ];
       
-      mockPrisma.$queryRawUnsafe.mockResolvedValue(mockPlayerItems);
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce(mockPlayerItems)
+        .mockResolvedValue([]);
       mockPrisma.itemTemplate.findMany.mockResolvedValue([]); // 没有找到道具模板
       
       const result = await service.getPlayerItems(merchantId, appId, playerId, undefined, undefined, undefined);
@@ -280,7 +284,9 @@ describe('PlayerItemService', () => {
         },
       ];
       
-      mockPrisma.$queryRawUnsafe.mockResolvedValue(mockPlayerItems);
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce(mockPlayerItems)
+        .mockResolvedValue([]);
       
       // Mock 道具模板查询结果 - 模板已过期
       const mockItemTemplates = [
@@ -377,7 +383,9 @@ describe('PlayerItemService', () => {
         },
       ];
       
-      mockPrisma.$queryRawUnsafe.mockResolvedValue(mockPlayerItems);
+      mockPrisma.$queryRawUnsafe
+        .mockResolvedValueOnce(mockPlayerItems)
+        .mockResolvedValue([]);
       
       // Mock 道具模板查询结果 - 一个过期，一个正常
       const mockItemTemplates = [
@@ -742,11 +750,16 @@ describe('PlayerItemService', () => {
 
       // Mock 事务
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          // 原子预留每日配额：如果已达上限则返回0
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            return 0; // 模拟今日已发放1个且上限为1，新增失败
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第一次调用：幂等性检查，返回空数组表示无重复
           .mockResolvedValueOnce([{ total: 0 }]) // 第二次调用：持有上限检查，返回当前持有0个
-          .mockResolvedValueOnce([{ total: 1 }]) // 第三次调用：每日限制检查，返回已发放1个
           .mockResolvedValue([{ id: 1, amount: 1 }]), // 其他查询
         app: {
           findFirst: jest.fn().mockResolvedValue({
@@ -776,12 +789,10 @@ describe('PlayerItemService', () => {
       expect(result.success).toBe(false);
       expect(result.message).toContain('超出道具每日限制');
       
-      // 验证查询条件包含 record_type = 'GRANT'
-      const allCalls = mockTx.$queryRawUnsafe.mock.calls;
-      const hasGrantQuery = allCalls.some((call: any[]) => 
-        typeof call[0] === 'string' && call[0].includes("record_type = 'GRANT'")
-      );
-      expect(hasGrantQuery).toBe(true);
+      // 验证发生了每日配额的原子更新尝试
+      const execCalls = mockTx.$executeRawUnsafe.mock.calls;
+      const hasCounterUpdate = execCalls.some((call: any[]) => typeof call[0] === 'string' && call[0].includes('UPDATE') && call[0].includes('item_limits') && call[0].includes('SET granted = granted +'));
+      expect(hasCounterUpdate).toBe(true);
     });
 
     it('应该防止通过多次小额发放绕过每日限制', async () => {
@@ -826,13 +837,22 @@ describe('PlayerItemService', () => {
       mockShardingService.getItemRecordTable.mockReturnValue('item_records_202409');
       
       // 第一次发放：今日已发放0个，发放2个，应该成功
+      let currentDailyAmount = 0;
       const mockTx1 = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            if (currentDailyAmount + 2 <= dailyLimit) {
+              currentDailyAmount += 2;
+              return 1;
+            }
+            return 0;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第1次调用：幂等性检查
           .mockResolvedValueOnce([{ total: 0 }]) // 第2次调用：持有上限检查
           .mockResolvedValueOnce([{ grand_total: 0 }]) // 第3次调用：总量检查
-          .mockResolvedValueOnce([{ total: 0 }]) // 第4次调用：每日限制检查（今日已发放0个）
           .mockResolvedValue([{ id: 1, amount: 2 }]), // 其他查询
         app: {
           findFirst: jest.fn().mockResolvedValue({
@@ -860,10 +880,18 @@ describe('PlayerItemService', () => {
 
       // 第二次发放：今日已发放2个，再发放2个，应该失败（2+2=4 > 3）
       const mockTx2 = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            if (currentDailyAmount + 2 <= dailyLimit) {
+              currentDailyAmount += 2;
+              return 1;
+            }
+            return 0;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
-          .mockResolvedValueOnce([]) // 幂等性检查
-          .mockResolvedValueOnce([{ total: 2 }]), // 每日限制检查（今日已发放2个）
+          .mockResolvedValueOnce([]), // 幂等性检查
         app: {
           findFirst: jest.fn().mockResolvedValue({
             id: 'app-1',

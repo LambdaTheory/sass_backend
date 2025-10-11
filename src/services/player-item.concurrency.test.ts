@@ -29,6 +29,7 @@ describe('PlayerItemService - 并发安全测试', () => {
       getAllItemRecordTables: jest.fn().mockResolvedValue(['item_records_202410']),
       getAllPlayerItemTables: jest.fn().mockResolvedValue(['player_items_202410']),
       getItemRecordTables: jest.fn().mockResolvedValue(['item_records_202410']),
+      getItemLimitTable: jest.fn().mockReturnValue('item_limits_test_app_20241011'),
       filterExistingTables: jest.fn().mockImplementation(async (tables: string[]) => tables),
     };
 
@@ -78,10 +79,6 @@ describe('PlayerItemService - 并发安全测试', () => {
       if (query.includes('SELECT') && query.includes('idempotency_key')) {
         return Promise.resolve([]);
       }
-      // Mock 每日限制查询
-      if (query.includes('SELECT SUM(amount)')) {
-        return Promise.resolve([{ total: sharedDailyAmount }]);
-      }
       return Promise.resolve([]);
     });
 
@@ -91,17 +88,6 @@ describe('PlayerItemService - 并发安全测试', () => {
          $queryRawUnsafe: jest.fn().mockImplementation((query: string) => {
            if (query.includes('SELECT') && query.includes('idempotency_key')) {
              return Promise.resolve([]);
-           }
-           // 在事务中的每日限制查询，模拟并发竞争
-           if (query.includes('SELECT COALESCE(SUM(amount), 0)') && query.includes('FOR UPDATE') && query.includes("record_type = 'GRANT'")) {
-             // 模拟真实的并发竞争：读取当前值
-             const currentAmount = sharedDailyAmount;
-             
-             // 立即增加共享状态（模拟并发写入）
-             sharedDailyAmount += amountPerRequest;
-             
-             // 返回读取时的值（这是真实数据库行为）
-             return Promise.resolve([{ total: currentAmount }]);
            }
            if (query.includes('LAST_INSERT_ID()')) {
              return Promise.resolve([{
@@ -120,7 +106,17 @@ describe('PlayerItemService - 并发安全测试', () => {
            }
            return Promise.resolve([]);
          }),
-         $executeRawUnsafe: jest.fn().mockResolvedValue({ affectedRows: 1 }),
+         $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+           // 原子预留每日配额：超过 dailyLimit 返回 0
+           if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+             if (sharedDailyAmount + amountPerRequest <= dailyLimit) {
+               sharedDailyAmount += amountPerRequest;
+               return 1;
+             }
+             return 0;
+           }
+           return 1;
+         }),
          app: {
            findFirst: jest.fn().mockResolvedValue({
              id: 'test_app',
@@ -222,9 +218,6 @@ describe('PlayerItemService - 并发安全测试', () => {
       if (query.includes('SELECT') && query.includes('idempotency_key')) {
         return Promise.resolve([]);
       }
-      if (query.includes('SELECT SUM(amount)')) {
-        return Promise.resolve([{ total: currentDailyAmount }]);
-      }
       return Promise.resolve([]);
     });
 
@@ -234,9 +227,6 @@ describe('PlayerItemService - 并发安全测试', () => {
          $queryRawUnsafe: jest.fn().mockImplementation((query: string) => {
            if (query.includes('SELECT') && query.includes('idempotency_key')) {
              return Promise.resolve([]);
-           }
-           if (query.includes('SELECT SUM(amount)') && query.includes('FOR UPDATE')) {
-             return Promise.resolve([{ total: currentDailyAmount }]);
            }
            if (query.includes('LAST_INSERT_ID()')) {
              return Promise.resolve([{
@@ -255,7 +245,16 @@ describe('PlayerItemService - 并发安全测试', () => {
            }
            return Promise.resolve([]);
          }),
-         $executeRawUnsafe: jest.fn().mockResolvedValue({ affectedRows: 1 }),
+         $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+           if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+             if (currentDailyAmount + amountPerRequest <= dailyLimit) {
+               currentDailyAmount += amountPerRequest;
+               return 1;
+             }
+             return 0;
+           }
+           return 1;
+         }),
          app: {
            findFirst: jest.fn().mockResolvedValue({
              id: 'test_app',
@@ -283,20 +282,8 @@ describe('PlayerItemService - 并发安全测试', () => {
       const result = await callback(mockTx);
       
       // 模拟严格的并发控制：检查是否会超出限制
-      if (result && result.success) {
-        const newTotal = currentDailyAmount + result.playerItem.amount;
-        if (newTotal <= dailyLimit) {
-          currentDailyAmount = newTotal;
-        } else {
-          // 如果会超出限制，返回失败
-          return {
-            success: false,
-            message: '超出道具每日限制',
-            code: 'DAILY_LIMIT_EXCEEDED'
-          };
-        }
-      }
-      
+      // 结果由原子更新决定，这里无需再校验
+
       return result;
     });
 

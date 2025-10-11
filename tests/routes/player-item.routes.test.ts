@@ -47,7 +47,7 @@ const mockMerchantUser: MockUser = {
   user_type: 'MERCHANT',
   merchant_id: 'merchant-1',
   status: 1,
-  permissions: ['player_item_read', 'item_grant']
+  permissions: ['player_item_read', 'item_grant', 'item_consume']
 };
 
 const mockUserWithoutPermission: MockUser = {
@@ -1010,7 +1010,7 @@ describe('Player Item Routes Logic', () => {
         merchant_id: 'merchant-1',
         app_id: 'app-1',
         player_id: 'player-1',
-        amount: 95, // 原来100，消费5后剩余95
+        amount: 5, // 原来10，消费5后剩余5
         status: 'normal',
         remark: '测试消费'
       });
@@ -1028,7 +1028,7 @@ describe('Player Item Routes Logic', () => {
           merchant_id: 'merchant-1',
           app_id: 'app-1',
           player_id: 'player-1',
-          amount: 100, // 消费全部数量
+          amount: 10, // 消费全部数量（ID为1的道具有10个）
           remark: '全部消费'
         },
         'test-consume-idempotency-key-2'
@@ -1081,7 +1081,7 @@ describe('Player Item Routes Logic', () => {
           merchant_id: 'merchant-1',
           app_id: 'app-1',
           player_id: 'player-1',
-          amount: 200 // 超过现有数量100
+          amount: 20 // 超过现有数量10
         },
         'test-consume-idempotency-key-5'
       );

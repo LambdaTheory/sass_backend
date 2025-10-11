@@ -255,6 +255,75 @@ export class ShardingService {
     });
   }
 
+  async createItemLimitTable(
+    merchantId: string,
+    appId: string,
+    yearMonthDay: string
+  ): Promise<void> {
+    const tableName = `item_limits_${appId}_${yearMonthDay}`;
+    console.log(`检查每日配额表是否存在: ${tableName}`);
+
+    // 检查元数据中是否存在
+    const existing = await this.prisma.shardingMetadata.findFirst({ where: { table_name: tableName } });
+    if (existing) {
+      console.log(`每日配额表元数据已存在: ${tableName}`);
+      // 再检查表是否真的存在
+      try {
+        const result = await this.prisma.$queryRawUnsafe<any[]>(`SHOW TABLES LIKE '${tableName}'`);
+        if (result && result.length > 0) {
+          console.log(`每日配额表确实存在: ${tableName}`);
+          return;
+        } else {
+          console.log(`每日配额表元数据存在但表不存在，重新创建: ${tableName}`);
+          // 删除错误的元数据记录
+          await this.prisma.shardingMetadata.delete({ where: { id: existing.id } });
+        }
+      } catch (error) {
+        console.log(`每日配额表元数据存在但表检查失败，重新创建: ${tableName}`);
+        // 删除错误的元数据记录
+        await this.prisma.shardingMetadata.delete({ where: { id: existing.id } });
+      }
+    }
+
+    console.log(`开始创建每日配额表: ${tableName}`);
+    const createTableSQL = `
+      CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+        id BIGINT NOT NULL AUTO_INCREMENT,
+        merchant_id VARCHAR(36) NOT NULL,
+        app_id VARCHAR(36) NOT NULL,
+        player_id VARCHAR(100) NOT NULL,
+        item_id VARCHAR(30) NOT NULL,
+        date_key VARCHAR(8) NOT NULL,
+        daily_limit INT NOT NULL,
+        granted INT NOT NULL DEFAULT 0,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY uniq_quota (merchant_id, app_id, player_id, item_id, date_key),
+        INDEX idx_app_player_date (app_id, player_id, date_key),
+        INDEX idx_item_date (item_id, date_key)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `;
+
+    await this.prisma.$executeRawUnsafe(createTableSQL);
+    console.log(`每日配额表创建成功: ${tableName}`);
+
+    // 记录元数据
+    await this.prisma.shardingMetadata.create({
+      data: {
+        id: this.generateUUID(),
+        table_type: "ITEM_LIMITS",
+        merchant_id: merchantId,
+        app_id: appId,
+        table_name: tableName,
+        time_range: yearMonthDay,
+        status: "ACTIVE",
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+      },
+    });
+  }
+
   // ==================== 自动建表任务 ====================
 
   async ensureTablesExist(merchantId: string, appId: string, timestamp?: number): Promise<void> {
@@ -274,6 +343,12 @@ export class ShardingService {
       console.log(`创建流水表: ${itemRecordTable}`);
       await this.createItemRecordTable(merchantId, appId, targetDayStr);
 
+      // 确保指定时间的每日配额表存在
+      const itemLimitTable = this.getItemLimitTable(appId, now);
+      const targetLimitDayStr = itemLimitTable.split('_').pop()!;
+      console.log(`创建每日配额表: ${itemLimitTable}`);
+      await this.createItemLimitTable(merchantId, appId, targetLimitDayStr);
+
       // 如果没有传入时间戳，还需要确保明天的流水表存在
       if (!timestamp) {
         const tomorrow = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
@@ -281,6 +356,12 @@ export class ShardingService {
         const tomorrowStr = tomorrowItemRecordTable.split('_').pop()!;
         console.log(`创建明天的流水表: ${tomorrowItemRecordTable}`);
         await this.createItemRecordTable(merchantId, appId, tomorrowStr);
+
+        // 同时创建明天的每日配额表
+        const tomorrowItemLimitTable = this.getItemLimitTable(appId, tomorrow);
+        const tomorrowLimitStr = tomorrowItemLimitTable.split('_').pop()!;
+        console.log(`创建明天的每日配额表: ${tomorrowItemLimitTable}`);
+        await this.createItemLimitTable(merchantId, appId, tomorrowLimitStr);
       }
       
       console.log(`表创建完成: merchantId=${merchantId}, appId=${appId}`);

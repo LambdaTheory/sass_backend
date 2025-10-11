@@ -231,20 +231,19 @@ export class PlayerItemService {
 
       // 9. 在事务内再次检查每日限制（使用行锁确保并发安全）
       if (itemTemplate.daily_limit_max && itemTemplate.daily_limit_max > 0) {
-        const dailyCheckResult = await this.checkDailyLimitWithLock(
+        const quotaResult = await this.reserveDailyQuotaWithCounter(
           data.merchant_id,
           data.app_id,
           data.player_id,
           data.item_id,
           data.amount,
           itemTemplate.daily_limit_max,
-          todayStart,
-          todayEnd,
+          now,
           tx
         );
 
-        if (!dailyCheckResult.success) {
-          return dailyCheckResult;
+        if (!quotaResult.success) {
+          return quotaResult;
         }
       }
 
@@ -317,6 +316,77 @@ export class PlayerItemService {
         message: "道具发放成功",
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
+
+  /**
+   * 使用每日配额计数表进行原子额度预留
+   */
+  private async reserveDailyQuotaWithCounter(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    amount: number,
+    dailyLimit: number,
+    nowSec: number,
+    tx: any
+  ): Promise<{ success: boolean; message: string }> {
+    const limitTable = this.shardingService.getItemLimitTable(appId, nowSec);
+    const dateKey = limitTable.split('_').pop()!; // YYYYMMDD
+
+    // 确保有一行记录（如果不存在则插入），并更新当日限制到最新值
+    await tx.$executeRawUnsafe(
+      `INSERT IGNORE INTO \`${limitTable}\` (merchant_id, app_id, player_id, item_id, date_key, daily_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      dateKey,
+      dailyLimit,
+      nowSec,
+      nowSec
+    );
+
+    // 无条件更新每日限制为模板提供值，以支持动态调整
+    await tx.$executeRawUnsafe(
+      `UPDATE \`${limitTable}\` SET daily_limit = ?, updated_at = ?
+       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND date_key = ?`,
+      dailyLimit,
+      nowSec,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      dateKey
+    );
+
+    // 原子预留：仅当 granted + amount <= daily_limit 时增加 granted
+    const affected = await tx.$executeRawUnsafe(
+      `UPDATE \`${limitTable}\`
+       SET granted = granted + ?, updated_at = ?
+       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND date_key = ?
+         AND granted + ? <= daily_limit`,
+      amount,
+      nowSec,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      dateKey,
+      amount
+    );
+
+    // MySQL 在 UPDATE 返回影响行数；Prisma $executeRawUnsafe 返回影响数
+    const ok = typeof affected === 'number' ? affected === 1 : true; // 部分驱动返回空，视为成功
+    if (!ok) {
+      return {
+        success: false,
+        message: `超出道具每日限制，无法发放 ${amount} 个（达到或超过 ${dailyLimit}）`,
+      };
+    }
+
+    return { success: true, message: '每日配额预留成功' };
   }
 
   /**

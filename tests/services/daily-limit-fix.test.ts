@@ -28,6 +28,7 @@ const mockShardingService = {
   getAllItemRecordTables: jest.fn(),
   ensureTablesExist: jest.fn(),
   getItemRecordTables: jest.fn(),
+  getItemLimitTable: jest.fn(),
   filterExistingTables: jest.fn(),
 } as unknown as ShardingService;
 
@@ -45,6 +46,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
     (mockShardingService.getAllItemRecordTables as jest.Mock).mockReturnValue(['item_record_0']);
     (mockShardingService.ensureTablesExist as jest.Mock).mockResolvedValue(undefined);
     (mockShardingService.getItemRecordTables as jest.Mock).mockResolvedValue(['item_record_0']);
+    (mockShardingService.getItemLimitTable as jest.Mock).mockReturnValue('item_limits_test_app_20241011');
     (mockShardingService.filterExistingTables as jest.Mock).mockImplementation(async (tables: string[]) => tables);
   });
 
@@ -76,11 +78,16 @@ describe('PlayerItemService - Daily Limit Fix', () => {
 
       // 模拟事务
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          // 原子预留每日配额：6 + 5 > 10，返回0表示失败
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            return 0;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第一次调用：幂等性检查，返回空数组表示无重复
           .mockResolvedValueOnce([{ total: 0 }]) // 第二次调用：持有上限检查，返回当前持有0个
-          .mockResolvedValueOnce([{ total: 6 }]) // 第三次调用：每日限制检查，返回已发放6个
           .mockResolvedValue([{      // 其他查询：返回新创建的道具
             id: 1,
             merchant_id: 'test_merchant',
@@ -125,8 +132,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
         },
       };
 
-      // 模拟已发放数量为6个（接近限制）
-      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([{ total: 6 }]);
+      // 每日配额通过计数表控制，此处无需模拟SUM查询
 
       // 模拟事务执行
       (mockPrisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
@@ -135,7 +141,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
 
       const result = await playerItemService.grantPlayerItem(testData, 'test_key');
 
-      // 应该成功，因为6 + 5 = 11 > 10，但在事务内会正确检查
+      // 应该失败，因为6 + 5 = 11 > 10
       expect(result.success).toBe(false);
       expect(result.message).toContain('超出道具每日限制');
     });
@@ -146,11 +152,16 @@ describe('PlayerItemService - Daily Limit Fix', () => {
 
       // 模拟事务
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          // 原子预留每日配额：3 + 5 = 8 <= 10，返回1表示成功
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            return 1;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第一次调用：幂等性检查，返回空数组表示无重复
           .mockResolvedValueOnce([{ total: 0 }]) // 第二次调用：持有上限检查，返回当前持有0个
-          .mockResolvedValueOnce([{ total: 3 }]) // 第三次调用：每日限制检查，返回已发放3个
           .mockResolvedValue([{      // 其他查询：返回新创建的道具
             id: 1,
             merchant_id: 'test_merchant',
@@ -195,8 +206,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
         },
       };
 
-      // 模拟已发放数量为3个（在限制内）
-      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([{ total: 3 }]);
+      // 每日配额通过计数表控制，此处无需模拟SUM查询
 
       // 模拟事务执行
       (mockPrisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
@@ -218,11 +228,16 @@ describe('PlayerItemService - Daily Limit Fix', () => {
       (mockPrisma.itemTemplate.findFirst as jest.Mock).mockResolvedValue(mockItemTemplate);
       
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          // 原子预留每日配额：3 + 7 = 10，返回1表示成功
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            return 1;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第一次调用：幂等性检查，返回空数组表示无重复
           .mockResolvedValueOnce([{ total: 0 }]) // 第二次调用：持有上限检查，返回当前持有0个
-          .mockResolvedValueOnce([{ total: 3 }]) // 第三次调用：每日限制检查，返回已发放3个
           .mockResolvedValue([{      // 其他查询：返回新创建的道具
             id: 1,
             merchant_id: 'test_merchant',
@@ -267,8 +282,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
         },
       };
 
-      // 模拟已发放数量为3个
-      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([{ total: 3 }]);
+      // 每日配额通过计数表控制，此处无需模拟SUM查询
 
       // 模拟事务执行
       (mockPrisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
@@ -290,11 +304,16 @@ describe('PlayerItemService - Daily Limit Fix', () => {
       (mockPrisma.itemTemplate.findFirst as jest.Mock).mockResolvedValue(mockItemTemplate);
       
       const mockTx = {
-        $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
+        $executeRawUnsafe: jest.fn().mockImplementation((query: string) => {
+          // 原子预留每日配额：3 + 8 = 11 > 10，返回0表示失败
+          if (typeof query === 'string' && query.includes('UPDATE') && query.includes('item_limits') && query.includes('SET granted = granted +')) {
+            return 0;
+          }
+          return 1;
+        }),
         $queryRawUnsafe: jest.fn()
           .mockResolvedValueOnce([]) // 第一次调用：幂等性检查，返回空数组表示无重复
           .mockResolvedValueOnce([{ total: 0 }]) // 第二次调用：持有上限检查，返回当前持有0个
-          .mockResolvedValueOnce([{ total: 3 }]) // 第三次调用：每日限制检查，返回已发放3个
           .mockResolvedValue([{      // 其他查询：返回新创建的道具
             id: 1,
             merchant_id: 'test_merchant',
@@ -321,8 +340,7 @@ describe('PlayerItemService - Daily Limit Fix', () => {
         },
       };
 
-      // 模拟已发放数量为3个
-      (mockPrisma.$queryRaw as jest.Mock).mockResolvedValue([{ total: 3 }]);
+      // 每日配额通过计数表控制，此处无需模拟SUM查询
 
       // 模拟事务执行
       (mockPrisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
