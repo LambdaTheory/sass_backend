@@ -1,14 +1,13 @@
 {
-  "version": "v1.2.7",
-  "description": "修复总发放上限和每日发放上限的并发安全问题",
-  "date": "2025-10-13 11:30:31",
+  "version": "v1.2.8",
+  "description": "修复分批操作绕过总量限制的严重bug",
+  "date": "2025年10月13日 星期一 14时31分13秒 CST",
   "changes": [
-    "修复reserveTotalQuotaWithCounter方法的并发竞争条件问题",
-    "使用INSERT ... ON DUPLICATE KEY UPDATE确保原子性操作",
-    "修复reserveDailyQuotaWithCounter方法，使用相同的严格原子操作",
-    "防止通过分批发放或并发请求绕过总发放上限",
-    "增强错误信息，提供当前已发放数量和限制详情",
-    "创建针对总发放上限并发场景的单元测试文件",
-    "确保道具发放系统的数据一致性和并发安全性"
+    "修复 reserveTotalQuotaWithCounter 方法中分批操作绕过总量限制的bug",
+    "修改 INSERT ... ON DUPLICATE KEY UPDATE 逻辑，避免重复更新 total_limit 字段",
+    "确保 total_limit 只在记录首次创建时设置，后续不再修改",
+    "防止分批发放时因 total_limit 被重置而绕过限制检查",
+    "添加专门的分批操作测试用例验证修复效果",
+    "测试覆盖顺序分批、边界条件和零限制等场景"
   ]
 }

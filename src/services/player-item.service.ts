@@ -400,13 +400,12 @@ export class PlayerItemService {
   ): Promise<{ success: boolean; message: string }> {
     const totalLimitTable = this.shardingService.getItemTotalLimitTable(appId);
 
-    // 使用 INSERT ... ON DUPLICATE KEY UPDATE 确保记录存在并更新总限制
-    // 这个操作是原子的，避免了分离的 INSERT IGNORE 和 UPDATE 操作
+    // 关键修复：只在记录不存在时设置total_limit，存在时保持原值不变
+    // 这样可以防止分批操作绕过总量限制
     await tx.$executeRawUnsafe(
       `INSERT INTO \`${totalLimitTable}\` (merchant_id, app_id, player_id, item_id, total_limit, granted, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
        ON DUPLICATE KEY UPDATE 
-         total_limit = VALUES(total_limit),
          updated_at = VALUES(updated_at)`,
       merchantId,
       appId,
@@ -418,7 +417,7 @@ export class PlayerItemService {
     );
 
     // 原子预留：仅当 granted + amount <= total_limit 时增加 granted
-    // 这是关键的原子操作，确保并发安全
+    // 这是关键的原子操作，确保并发安全和分批操作的总量限制
     const affected = await tx.$executeRawUnsafe(
       `UPDATE \`${totalLimitTable}\`
        SET granted = granted + ?, updated_at = ?
