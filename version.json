@@ -1,14 +1,14 @@
 {
-  "version": "v1.2.6",
-  "description": "修复测试失败问题，确保所有279个测试通过",
-  "date": "2025-10-11 17:21:30",
+  "version": "v1.2.7",
+  "description": "修复总发放上限和每日发放上限的并发安全问题",
+  "date": "2025-10-13 11:30:31",
   "changes": [
-    "修复merchant-key.service.test.ts中的HMAC签名测试问题",
-    "将RSA签名mock改为HMAC签名mock，匹配实际实现",
-    "修复auth.service.ts中错误消息的格式问题（移除多余空格）",
-    "调整auth.service.ts中用户和商户验证的逻辑顺序",
-    "修复auth.service.test.ts中mock数据缺少必要字段的问题",
-    "为测试用户添加user_type字段，为REGULAR用户添加merchantId和商户mock",
-    "确保所有279个测试全部通过，提升代码质量和稳定性"
+    "修复reserveTotalQuotaWithCounter方法的并发竞争条件问题",
+    "使用INSERT ... ON DUPLICATE KEY UPDATE确保原子性操作",
+    "修复reserveDailyQuotaWithCounter方法，使用相同的严格原子操作",
+    "防止通过分批发放或并发请求绕过总发放上限",
+    "增强错误信息，提供当前已发放数量和限制详情",
+    "创建针对总发放上限并发场景的单元测试文件",
+    "确保道具发放系统的数据一致性和并发安全性"
   ]
 }

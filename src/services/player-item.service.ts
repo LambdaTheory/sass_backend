@@ -333,10 +333,11 @@ export class PlayerItemService {
     const limitTable = this.shardingService.getItemLimitTable(appId, nowSec);
     const dateKey = limitTable.split('_').pop()!; // YYYYMMDD
 
-    // 确保有一行记录（如果不存在则插入），并更新当日限制到最新值
+    // 原子操作：确保记录存在并更新每日限制
     await tx.$executeRawUnsafe(
-      `INSERT IGNORE INTO \`${limitTable}\` (merchant_id, app_id, player_id, item_id, date_key, daily_limit, granted, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      `INSERT INTO \`${limitTable}\` (merchant_id, app_id, player_id, item_id, date_key, daily_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+       ON DUPLICATE KEY UPDATE daily_limit = VALUES(daily_limit), updated_at = VALUES(updated_at)`,
       merchantId,
       appId,
       playerId,
@@ -345,19 +346,6 @@ export class PlayerItemService {
       dailyLimit,
       nowSec,
       nowSec
-    );
-
-    // 无条件更新每日限制为模板提供值，以支持动态调整
-    await tx.$executeRawUnsafe(
-      `UPDATE \`${limitTable}\` SET daily_limit = ?, updated_at = ?
-       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND date_key = ?`,
-      dailyLimit,
-      nowSec,
-      merchantId,
-      appId,
-      playerId,
-      itemId,
-      dateKey
     );
 
     // 原子预留：仅当 granted + amount <= daily_limit 时增加 granted
@@ -379,9 +367,21 @@ export class PlayerItemService {
     // MySQL 在 UPDATE 返回影响行数；Prisma $executeRawUnsafe 返回影响数
     const ok = typeof affected === 'number' ? affected === 1 : true; // 部分驱动返回空，视为成功
     if (!ok) {
+      // 查询当前状态以提供更详细的错误信息
+      const currentState = await tx.$queryRawUnsafe(
+        `SELECT granted, daily_limit FROM \`${limitTable}\`
+         WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ? AND date_key = ?`,
+        merchantId,
+        appId,
+        playerId,
+        itemId,
+        dateKey
+      );
+
+      const current = currentState[0] || { granted: 0, daily_limit: dailyLimit };
       return {
         success: false,
-        message: `超出道具每日限制，无法发放 ${amount} 个（达到或超过 ${dailyLimit}）`,
+        message: `超出道具每日限制，无法发放 ${amount} 个（当前已发放: ${current.granted}，每日限制: ${current.daily_limit}）`,
       };
     }
 
@@ -400,10 +400,14 @@ export class PlayerItemService {
   ): Promise<{ success: boolean; message: string }> {
     const totalLimitTable = this.shardingService.getItemTotalLimitTable(appId);
 
-    // 确保有一行记录（如果不存在则插入），并更新总限制到最新值
+    // 使用 INSERT ... ON DUPLICATE KEY UPDATE 确保记录存在并更新总限制
+    // 这个操作是原子的，避免了分离的 INSERT IGNORE 和 UPDATE 操作
     await tx.$executeRawUnsafe(
-      `INSERT IGNORE INTO \`${totalLimitTable}\` (merchant_id, app_id, player_id, item_id, total_limit, granted, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+      `INSERT INTO \`${totalLimitTable}\` (merchant_id, app_id, player_id, item_id, total_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         total_limit = VALUES(total_limit),
+         updated_at = VALUES(updated_at)`,
       merchantId,
       appId,
       playerId,
@@ -413,19 +417,8 @@ export class PlayerItemService {
       nowSec
     );
 
-    // 无条件更新总限制为模板提供值，以支持动态调整
-    await tx.$executeRawUnsafe(
-      `UPDATE \`${totalLimitTable}\` SET total_limit = ?, updated_at = ?
-       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?`,
-      totalLimit,
-      nowSec,
-      merchantId,
-      appId,
-      playerId,
-      itemId
-    );
-
     // 原子预留：仅当 granted + amount <= total_limit 时增加 granted
+    // 这是关键的原子操作，确保并发安全
     const affected = await tx.$executeRawUnsafe(
       `UPDATE \`${totalLimitTable}\`
        SET granted = granted + ?, updated_at = ?
@@ -440,13 +433,30 @@ export class PlayerItemService {
       amount
     );
 
-    // MySQL 在 UPDATE 返回影响行数；Prisma $executeRawUnsafe 返回影响数
-    const ok = typeof affected === 'number' ? affected === 1 : true; // 部分驱动返回空，视为成功
-    if (!ok) {
-      return {
-        success: false,
-        message: `超出道具总限制，无法发放 ${amount} 个（达到或超过 ${totalLimit}）`,
-      };
+    // 检查是否成功更新了记录
+    if (typeof affected !== 'number' || affected !== 1) {
+      // 查询当前状态以提供更详细的错误信息
+      const currentState = await tx.$queryRawUnsafe(
+        `SELECT granted, total_limit FROM \`${totalLimitTable}\`
+         WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?`,
+        merchantId,
+        appId,
+        playerId,
+        itemId
+      ) as { granted: number; total_limit: number }[];
+
+      const current = currentState[0];
+      if (current) {
+        return {
+          success: false,
+          message: `超出道具总限制，当前已发放 ${current.granted} 个，本次发放 ${amount} 个，总限制 ${current.total_limit} 个`,
+        };
+      } else {
+        return {
+          success: false,
+          message: `总限制记录不存在，无法发放道具`,
+        };
+      }
     }
 
     return { success: true, message: '总配额预留成功' };
