@@ -16,7 +16,7 @@ services:
     volumes:
       - ./logs:/app/logs
     networks:
-      - daojusaas-network
+      - itemsaas-network
     restart: unless-stopped
     depends_on:
       mysql:
@@ -36,7 +36,7 @@ services:
     volumes:
       - ./logs:/var/log
     networks:
-      - daojusaas-network
+      - itemsaas-network
     restart: unless-stopped
     depends_on:
       mysql:
@@ -57,7 +57,7 @@ services:
     ports:
       - "3306"
     networks:
-      - daojusaas-network
+      - itemsaas-network
     restart: unless-stopped
     healthcheck:
         test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
@@ -71,5 +71,5 @@ volumes:
   mysql_data:
 
 networks:
-  daojusaas-network:
+  itemsaas-network:
     driver: bridge
