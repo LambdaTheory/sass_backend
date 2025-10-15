@@ -270,7 +270,15 @@ export class PlayerItemService {
       // 如果有固定过期时间(小时)，计算从当前时间开始的过期时间戳
       if (itemTemplate.expire_duration && itemTemplate.expire_duration > 0) {
         // expire_duration是小时数，需要转换为秒数（1小时 = 3600秒）
-        expireTimes.push(now + itemTemplate.expire_duration * 3600);
+        const calculatedExpireTime = now + itemTemplate.expire_duration * 3600;
+        expireTimes.push(calculatedExpireTime);
+        console.log('[道具发放] 相对过期时间计算:', {
+          item_id: data.item_id,
+          expire_duration_hours: itemTemplate.expire_duration,
+          current_time: now,
+          calculated_expire_time: calculatedExpireTime,
+          will_expire_at: new Date(calculatedExpireTime * 1000).toISOString(),
+        });
       }
 
       // 如果有固定过期时间戳，需要转换为秒时间戳
@@ -282,9 +290,21 @@ export class PlayerItemService {
       // 取最小值作为过期时间
       if (expireTimes.length > 0) {
         expireTime = Math.min(...expireTimes);
+        console.log('[道具发放] 最终过期时间:', {
+          item_id: data.item_id,
+          expire_time: expireTime,
+          expire_time_date: new Date(expireTime * 1000).toISOString(),
+        });
+      } else {
+        console.log('[道具发放] 道具永不过期:', {
+          item_id: data.item_id,
+        });
       }
 
       // 11. 每次发放都创建新的道具记录（不再合并相同item_id的道具）
+      // 计算初始状态：如果设置了过期时间且当前已过期，则为UNUSABLE，否则为USABLE
+      const initialStatus = (expireTime && now > expireTime) ? "UNUSABLE" : "USABLE";
+
       await tx.$executeRawUnsafe(
         `INSERT INTO \`${playerItemTableName}\` (merchant_id, app_id, player_id, item_id, amount, expire_time, obtain_time, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         data.merchant_id,
@@ -294,7 +314,7 @@ export class PlayerItemService {
         data.amount,
         expireTime,
         now,
-        expireTime && now > expireTime ? "UNUSABLE" : "USABLE",
+        initialStatus,
         now,
         now
       );
@@ -954,12 +974,27 @@ export class PlayerItemService {
 
     // 实时计算过期状态
     const now = Math.floor(Date.now() / 1000);
-    const itemsWithStatus = results.map((item) => ({
-      ...item,
-      status: (item.expire_time && now > item.expire_time
-        ? "UNUSABLE"
-        : "USABLE") as "USABLE" | "UNUSABLE",
-    }));
+    const itemsWithStatus = results.map((item) => {
+      const expireTimeNum = item.expire_time ? Number(item.expire_time) : null;
+      const isExpired = expireTimeNum && now > expireTimeNum;
+
+      if (item.expire_time) {
+        console.log('[道具查询] 过期状态检查:', {
+          item_id: item.item_id,
+          player_id: item.player_id,
+          expire_time: expireTimeNum,
+          expire_time_type: typeof item.expire_time,
+          current_time: now,
+          is_expired: isExpired,
+          time_diff: expireTimeNum ? (expireTimeNum - now) : null,
+        });
+      }
+
+      return {
+        ...item,
+        status: (isExpired ? "UNUSABLE" : "USABLE") as "USABLE" | "UNUSABLE",
+      };
+    });
 
     // 如果没有道具，直接返回空数组
     if (itemsWithStatus.length === 0) {
@@ -1074,7 +1109,7 @@ export class PlayerItemService {
     // 为每个道具添加道具名称并重新计算综合状态
     return itemsWithIdempotencyKeys.map((item) => {
       const template = itemTemplateMap.get(item.item_id);
-      const isExpired = item.expire_time && now > item.expire_time;
+      const isExpired = item.expire_time && now > Number(item.expire_time);
       const isTemplateInactive = template?.is_active !== "ACTIVE";
       const isTemplateDeleted =
         template?.status === "DELETED" || template?.status === "PENDING_DELETE";
@@ -1351,7 +1386,7 @@ export class PlayerItemService {
       }
 
       // 6. 检查道具是否可用（未过期）
-      if (targetItem.expire_time && now > targetItem.expire_time) {
+      if (targetItem.expire_time && now > Number(targetItem.expire_time)) {
         return {
           success: false,
           message: "道具已过期，无法消费",
