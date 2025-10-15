@@ -210,12 +210,11 @@ export class PlayerItemService {
         }
       }
 
-      // 8. 检查总发放限制（使用原子更新确保并发安全）
+      // 8. 检查总发放限制（全局共享，使用原子更新确保并发安全）
       if (itemTemplate.total_limit && itemTemplate.total_limit > 0) {
         const totalQuotaResult = await this.reserveTotalQuotaWithCounter(
           data.merchant_id,
           data.app_id,
-          data.player_id,
           data.item_id,
           data.amount,
           itemTemplate.total_limit,
@@ -225,6 +224,24 @@ export class PlayerItemService {
 
         if (!totalQuotaResult.success) {
           return totalQuotaResult;
+        }
+      }
+
+      // 8.5. 检查玩家总发放限制（每个玩家独立，使用原子更新确保并发安全）
+      if (itemTemplate.player_total_limit && itemTemplate.player_total_limit > 0) {
+        const playerQuotaResult = await this.reservePlayerTotalQuotaWithCounter(
+          data.merchant_id,
+          data.app_id,
+          data.player_id,
+          data.item_id,
+          data.amount,
+          itemTemplate.player_total_limit,
+          now,
+          tx
+        );
+
+        if (!playerQuotaResult.success) {
+          return playerQuotaResult;
         }
       }
 
@@ -391,7 +408,6 @@ export class PlayerItemService {
   private async reserveTotalQuotaWithCounter(
     merchantId: string,
     appId: string,
-    playerId: string,
     itemId: string,
     amount: number,
     totalLimit: number,
@@ -401,15 +417,14 @@ export class PlayerItemService {
     const totalLimitTable = this.shardingService.getItemTotalLimitTable(appId);
 
     // 关键修复：只在记录不存在时设置total_limit，存在时保持原值不变
-    // 这样可以防止分批操作绕过总量限制
+    // 全局配额：所有玩家共享同一条记录
     await tx.$executeRawUnsafe(
-      `INSERT INTO \`${totalLimitTable}\` (merchant_id, app_id, player_id, item_id, total_limit, granted, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?)
-       ON DUPLICATE KEY UPDATE 
+      `INSERT INTO \`${totalLimitTable}\` (merchant_id, app_id, item_id, total_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)
+       ON DUPLICATE KEY UPDATE
          updated_at = VALUES(updated_at)`,
       merchantId,
       appId,
-      playerId,
       itemId,
       totalLimit,
       nowSec,
@@ -421,8 +436,80 @@ export class PlayerItemService {
     const affected = await tx.$executeRawUnsafe(
       `UPDATE \`${totalLimitTable}\`
        SET granted = granted + ?, updated_at = ?
-       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?
+       WHERE merchant_id = ? AND app_id = ? AND item_id = ?
          AND granted + ? <= total_limit`,
+      amount,
+      nowSec,
+      merchantId,
+      appId,
+      itemId,
+      amount
+    );
+
+    // 检查是否成功更新了记录
+    if (typeof affected !== 'number' || affected !== 1) {
+      // 查询当前状态以提供更详细的错误信息
+      const currentState = await tx.$queryRawUnsafe(
+        `SELECT granted, total_limit FROM \`${totalLimitTable}\`
+         WHERE merchant_id = ? AND app_id = ? AND item_id = ?`,
+        merchantId,
+        appId,
+        itemId
+      ) as { granted: number; total_limit: number }[];
+
+      const current = currentState[0];
+      if (current) {
+        return {
+          success: false,
+          message: `超出道具总限制（全局共享），当前已发放 ${current.granted} 个，本次发放 ${amount} 个，总限制 ${current.total_limit} 个`,
+        };
+      } else {
+        return {
+          success: false,
+          message: `总限制记录不存在，无法发放道具`,
+        };
+      }
+    }
+
+    return { success: true, message: '总配额预留成功' };
+  }
+
+  /**
+   * 使用玩家配额计数表进行原子额度预留（单个玩家总限制）
+   */
+  private async reservePlayerTotalQuotaWithCounter(
+    merchantId: string,
+    appId: string,
+    playerId: string,
+    itemId: string,
+    amount: number,
+    playerTotalLimit: number,
+    nowSec: number,
+    tx: any
+  ): Promise<{ success: boolean; message: string }> {
+    const playerLimitTable = this.shardingService.getItemPlayerLimitTable(appId);
+
+    // 玩家配额：每个玩家独立的记录
+    await tx.$executeRawUnsafe(
+      `INSERT INTO \`${playerLimitTable}\` (merchant_id, app_id, player_id, item_id, player_total_limit, granted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         updated_at = VALUES(updated_at)`,
+      merchantId,
+      appId,
+      playerId,
+      itemId,
+      playerTotalLimit,
+      nowSec,
+      nowSec
+    );
+
+    // 原子预留：仅当 granted + amount <= player_total_limit 时增加 granted
+    const affected = await tx.$executeRawUnsafe(
+      `UPDATE \`${playerLimitTable}\`
+       SET granted = granted + ?, updated_at = ?
+       WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?
+         AND granted + ? <= player_total_limit`,
       amount,
       nowSec,
       merchantId,
@@ -436,29 +523,29 @@ export class PlayerItemService {
     if (typeof affected !== 'number' || affected !== 1) {
       // 查询当前状态以提供更详细的错误信息
       const currentState = await tx.$queryRawUnsafe(
-        `SELECT granted, total_limit FROM \`${totalLimitTable}\`
+        `SELECT granted, player_total_limit FROM \`${playerLimitTable}\`
          WHERE merchant_id = ? AND app_id = ? AND player_id = ? AND item_id = ?`,
         merchantId,
         appId,
         playerId,
         itemId
-      ) as { granted: number; total_limit: number }[];
+      ) as { granted: number; player_total_limit: number }[];
 
       const current = currentState[0];
       if (current) {
         return {
           success: false,
-          message: `超出道具总限制，当前已发放 ${current.granted} 个，本次发放 ${amount} 个，总限制 ${current.total_limit} 个`,
+          message: `超出玩家道具总限制，当前已获得 ${current.granted} 个，本次发放 ${amount} 个，玩家总限制 ${current.player_total_limit} 个`,
         };
       } else {
         return {
           success: false,
-          message: `总限制记录不存在，无法发放道具`,
+          message: `玩家总限制记录不存在，无法发放道具`,
         };
       }
     }
 
-    return { success: true, message: '总配额预留成功' };
+    return { success: true, message: '玩家总配额预留成功' };
   }
 
   /**

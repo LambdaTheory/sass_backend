@@ -53,7 +53,8 @@ model ItemTemplate {
   expire_date         BigInt?
   limit_max           Int?
   daily_limit_max     Int?
-  total_limit         Int?
+  total_limit         Int?          // 全局总发放限制（所有玩家共享）
+  player_total_limit  Int?          // 单个玩家总发放限制（每个玩家独立）
   custom              String?       @db.Text
   confirmed_delete_at BigInt?       // 确认删除时间戳，用于定时任务清理
   created_at          BigInt
@@ -162,6 +163,7 @@ enum TableType {
   ITEM_RECORDS
   ITEM_LIMITS
   ITEM_TOTAL_LIMITS
+  ITEM_PLAYER_LIMITS
 }
 
 enum ShardingStatus {
